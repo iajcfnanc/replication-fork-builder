@@ -98,7 +98,7 @@ footer p { margin: 0; max-width: 80ch; }
 /* SVG parts, coloured from the same tokens */
 .tmpl { stroke: var(--tmpl); stroke-width: 4; stroke-linecap: round; fill: none; }
 .endlab { font-family: var(--font-mono); font-size: 17px; fill: var(--tmpl); }
-.lanebg { fill: var(--slot); }
+.lanebg { fill: color-mix(in srgb, var(--slot) 92%, white); }
 .forkmark { font-family: var(--font-body); font-size: 13px; fill: var(--muted); }
 .originmark { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
 .piece path { stroke: var(--surface); stroke-width: 1.5; }
@@ -157,12 +157,12 @@ footer p { margin: 0; max-width: 80ch; }
     <span class="spacer"></span>
     <button class="btn" id="btnHint">Show reading direction</button>
     <button class="btn" id="btnModel" hidden>Show a model answer for this step</button>
-    <button class="btn" id="btnNew">New layout</button>
+    <button class="btn" id="btnNew" title="Restart with a different fork direction and/or template polarity">Randomize direction &amp; polarity</button>
     <button class="btn" id="btnReset">Start again</button>
     <button class="btn primary" id="btnCheck">Check</button>
   </div>
 
-  <div class="material-key" aria-label="Materials"><span><i class="swatch parent"></i>Parental DNA</span><span><i class="swatch"></i>New DNA</span><span><i class="swatch rna"></i>RNA primer</span><span>E. coli · schematic</span></div>
+  <div class="material-key" aria-label="Materials"><span><i class="swatch parent"></i>Parental DNA</span><span><i class="swatch"></i>New DNA</span><span><i class="swatch rna"></i>RNA primer</span></div>
 
   <div class="board">
     <svg id="stage" viewBox="0 0 1000 300" role="application" aria-label="Replication workspace. Tab to a piece, use the arrow keys to move it, F to flip it, Delete to remove it.">
@@ -195,8 +195,8 @@ footer p { margin: 0; max-width: 80ch; }
   <section class="feedback" id="feedback" aria-live="polite"></section>
 
   <footer>
-    <p>Blocks represent stretches of DNA or RNA, not single nucleotides. Small chevrons mark 5′→3′ polarity, not enzyme movement.</p>
-    <p>Drag a piece from the tray onto a strand row; it snaps to the nearest slot. Click a piece to select it, then flip or remove it; double-click or double-tap also flips it. Keyboard: Tab to a piece, arrow keys move it, F flips, Delete removes.</p>
+    <p>Blocks represent stretches of DNA or RNA, not single nucleotides.</p>
+    <p>Keyboard: Tab to a piece, arrow keys move it, F flips, Delete removes.</p>
   </footer>
 </div>
 
@@ -413,7 +413,7 @@ function drawPieceShape(g, kind, x, y, w, dir, h = LANE_H) {
   el("path", { d: piecePath(x, y, w, dir, h) }, g);
   if (kind === "rna") for (let hx=x+6; hx<x+w-5; hx+=9) el("line", {x1:hx,y1:y-h/2+1,x2:hx-5,y2:y-h/2+8,class:"hatch"},g);
   const cx = dir === 1 ? x+w-7 : x+7;
-  el("polyline", {points:`${cx-dir*3},${y-3} ${cx},${y} ${cx-dir*3},${y+3}`,class:"chevron"},g);
+  el("circle", {cx, cy:y, r:2, class:"chevron"},g);
   if (w >= 38) { const t = el("text", { x: x + w / 2, y: y + 4, "text-anchor": "middle", class: "inside" }, g); t.textContent = kind === "rna" ? "RNA" : "DNA"; }
   const a = el("text", { x: x + 2, y: y - h / 2 - 3, class: "pol" }, g); a.textContent = dir === 1 ? "5" + P : "3" + P;
   const b = el("text", { x: x + w - 2, y: y - h / 2 - 3, "text-anchor": "end", class: "pol" }, g); b.textContent = dir === 1 ? "3" + P : "5" + P;
@@ -532,7 +532,7 @@ function renderTray() {
   const show = (S.stage === 1 || S.stage === 2 || S.stage === 3) && S.sub === "build";
   $("traywrap").hidden = !show;
   if (!show) return;
-  const tt = el("text", { x: 24, y: 18, class: "tray-title" }, tray); tt.textContent = "PARTS · DRAG ONTO A STRAND ROW";
+  const tt = el("text", { x: 24, y: 18, class: "tray-title" }, tray); tt.textContent = "Pieces — Drag these to their correct location. Double click to flip polarity.";
   for (const it of TRAY) {
     const tg = el("g", { class: "piece d1 " + it.kind, tabindex: "0", role: "button",
       "aria-label": `Add ${it.kind === "rna" ? "an RNA primer" : "DNA, " + it.len + " slots"}. Press Enter to place it in the first free space.` }, tray);
@@ -552,12 +552,12 @@ function renderChrome() {
   $("btnHint").hidden = !building || CFG.mode === "check";
   $("btnHint").textContent = S.hint ? "Hide reading direction" : "Show reading direction";
   $("btnModel").hidden = !building || CFG.mode === "check" || S.checks < 2;
-  $("btnNew").hidden = SESSION.layoutLocked;
+  $("btnNew").hidden = CFG.mode === "check" && SESSION.layoutLocked;
   $("btnCheck").hidden = !building;
   $("btnCheck").disabled = S.busy;
   $("btnCheck").textContent = CFG.mode === "check" ? "Submit this step" : "Check";
   $("brief").textContent = briefText();
-  $("given").textContent = `Given: top parental strand with its 5${P} end at the ${S.t === 1 ? "left" : "right"}.`;
+  $("given").textContent = `Starting orientation: top parental strand with its 5${P} end at the ${S.t === 1 ? "left" : "right"}.`;
   $("enzymes").hidden = !(S.stage === 4 && S.sub === "enzymes");
   if (S.stage === 4 && S.sub === "enzymes") renderEnzymeRow();
 }
@@ -1169,14 +1169,14 @@ function start(keepLayout) {
 $("btnFlip").addEventListener("click", () => S.sel && flip(S.sel));
 $("btnDel").addEventListener("click", () => S.sel && removePiece(S.sel));
 $("btnReset").addEventListener("click", () => start(true));
-$("btnNew").addEventListener("click", () => { if (!SESSION.layoutLocked) start(false); });
+$("btnNew").addEventListener("click", () => { if (CFG.mode !== "check" || !SESSION.layoutLocked) { SESSION.layoutLocked = false; const old = S; start(false); if (S.t === old.t && S.f === old.f) { const choice = Math.floor(Math.random()*3); if (choice !== 1) S.t *= -1; if (choice !== 0) S.f *= -1; start(true); } } });
 $("btnHint").addEventListener("click", () => { S.hint = !S.hint; SESSION.flags |= 1; render(); });
 $("btnCheck").addEventListener("click", runCheck);
 $("btnModel").addEventListener("click", () => {
   S.pieces = S.pieces.filter((p) => p.locked);
   for (const p of modelForStage()) if (canPlace(p.lane, p.start, p.len)) addPiece(p);
   SESSION.flags |= 2; S.flagged = null; render();
-  showCards([{ cls: "info", title: "A model answer for this step", text: "Compare it with yours. Each primer sits at the 5" + P + " end of the DNA it starts, and every arrow points 5" + P + "→3" + P + ", antiparallel to its template. Press Check to go on.", learn: "" }]);
+  showCards([{ cls: "info", title: "A model answer for this step", text: "Compare it with yours. Each primer sits at the 5" + P + " end of the DNA it starts, and each new strand runs 5" + P + "→3" + P + ", antiparallel to its template. Press Check to go on.", learn: "" }]);
 });
 document.addEventListener("keydown", (e) => {
   if (!S || S.sel == null || S.busy) return;

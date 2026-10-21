@@ -1,0 +1,1199 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNA replication: replication fork builder</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style>
+<script>window.FORK_CONFIG = {"mode": "practice", "layout": "random", "ends": "given"};</script>
+</head><body>
+<title>Replication Fork Builder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Shared palette is inlined by build_fork_builder.py. */
+/* Shared molecular palette: builder + lecture. Inlined by both builds. */
+:root {
+  --bg:#f4f6f7; --surface:#ffffff; --ink:#1b2930; --muted:#586a74;
+  --line:#d3dce1; --tmpl:#2b3a43; --dna:#1d6b87; --dna-2:#1d6b87;
+  --dna-ink:#ffffff; --rna:#c84b25; --rna-2:#c84b25; --rna-ink:#ffffff;
+  --accent:#1d6b87; --ok:#2b7a4b; --ok-bg:#e8f4ec; --bad:#b3261e;
+  --warn:#8a5d00; --focus:#e0a100; --slot:#e7eef1; --target:#7a4fb3;
+  --font-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#11171b; --surface:#182126; --ink:#e2eaee; --muted:#aabac3;
+    --line:#384954; --tmpl:#c7d2d8; --dna:#4cb0cf; --dna-2:#4cb0cf;
+    --dna-ink:#0d1a20; --rna:#ef7f5a; --rna-2:#ef7f5a; --rna-ink:#1c0d07;
+    --accent:#4cb0cf; --ok:#5cc28a; --ok-bg:#16281e; --bad:#f2766b;
+    --warn:#e3b448; --focus:#f2c14e; --slot:#1f2b31; --target:#b996ea;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#11171b; --surface:#182126; --ink:#e2eaee; --muted:#aabac3;
+  --line:#384954; --tmpl:#c7d2d8; --dna:#4cb0cf; --dna-2:#4cb0cf;
+  --dna-ink:#0d1a20; --rna:#ef7f5a; --rna-2:#ef7f5a; --rna-ink:#1c0d07;
+  --accent:#4cb0cf; --ok:#5cc28a; --ok-bg:#16281e; --bad:#f2766b;
+  --warn:#e3b448; --focus:#f2c14e; --slot:#1f2b31; --target:#b996ea;
+  color-scheme:dark;
+}
+.material-key { display:flex; flex-wrap:wrap; align-items:center; gap:10px 22px; font-size:13px; color:var(--muted); }
+.material-key span { display:inline-flex; gap:8px; align-items:center; }
+.swatch { display:inline-block; width:26px; height:10px; background:var(--dna); border-radius:2px; }
+.swatch.parent { height:4px; background:var(--tmpl); }
+.swatch.rna { background:repeating-linear-gradient(135deg,transparent 0 5px,#ffffff80 5px 7px),var(--rna); }
+:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5; }
+.wrap { max-width: 1060px; margin: 0 auto; padding-block: 16px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 12px; }
+header { display: grid; gap: 4px; }
+h1 { font-size: 1.35rem; font-weight: 600; margin: 0; text-wrap: balance; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.steps { display: flex; flex-wrap: wrap; gap: 6px 4px; list-style: none; margin: 0; padding: 0; align-items: center; }
+.steps li { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; color: var(--muted); }
+.steps li + li::before { content: ""; width: 22px; height: 1px; background: var(--line); margin-right: 4px; }
+.steps .dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-family: var(--font-mono); font-size: 0.75rem; }
+.steps li.now { color: var(--ink); font-weight: 600; }
+.steps li.now .dot { border-color: var(--accent); color: var(--accent); }
+.steps li.done .dot { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.brief { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; }
+.brief p { margin: 0; max-width: 72ch; }
+.brief .given { font-family: var(--font-mono); font-size: 0.85rem; color: var(--muted); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { font: inherit; font-size: 0.9rem; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--dna-ink); font-weight: 600; }
+.spacer { flex: 1 1 auto; }
+.selinfo { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); min-width: 0; margin: -6px 0 0; min-height: 1.3em; }
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+svg#stage { display: block; width: 100%; min-width: 720px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.traywrap { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+svg#tray { display: block; width: 100%; min-width: 560px; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.enzymes { background: var(--surface); border: 1px solid var(--target); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.enzymes p { margin: 0; }
+.enzymes .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.feedback { display: grid; gap: 8px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; }
+.card.bad { border-left-color: var(--bad); }
+.card.ok { border-left-color: var(--ok); }
+.card.win { border: 1px solid var(--ok); border-left: 4px solid var(--ok); background: var(--ok-bg); }
+.card.info { border-left-color: var(--warn); }
+.card.ask { border-left-color: var(--target); }
+.card h3 { font-size: 0.98rem; margin: 0; }
+.card p { margin: 0; max-width: 75ch; }
+.card .learn { font-size: 0.8rem; color: var(--muted); }
+.card .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.card .choices { display: grid; gap: 6px; }
+.card .choices .btn { text-align: left; }
+.code { font-family: var(--font-mono); font-size: 1.05rem; letter-spacing: 0.06em; padding: 6px 10px; border: 1px dashed var(--accent); border-radius: 6px; user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }
+footer { font-size: 0.8rem; color: var(--muted); }
+footer p { margin: 0; max-width: 80ch; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* SVG parts, coloured from the same tokens */
+.tmpl { stroke: var(--tmpl); stroke-width: 4; stroke-linecap: round; fill: none; }
+.endlab { font-family: var(--font-mono); font-size: 17px; fill: var(--tmpl); }
+.lanebg { fill: var(--slot); }
+.forkmark { font-family: var(--font-body); font-size: 13px; fill: var(--muted); }
+.originmark { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.piece path { stroke: var(--surface); stroke-width: 1.5; }
+.piece.dna.d1 path { fill: var(--dna); }
+.piece.dna.d2 path { fill: var(--dna-2); }
+.piece.rna.d1 path { fill: var(--rna); }
+.piece.rna.d2 path { fill: var(--rna-2); }
+.piece text.inside { font-family: var(--font-mono); font-size: 13px; pointer-events: none; }
+.piece.dna text.inside { fill: var(--dna-ink); }
+.piece.rna text.inside { fill: var(--rna-ink); }
+.piece text.pol { font-family: var(--font-mono); font-size: 13px; fill: var(--ink); pointer-events: none; }
+.piece .hatch { stroke: var(--rna-ink); stroke-width: 1.3; opacity: .55; pointer-events:none; }
+.piece .chevron { stroke-width:1.5; stroke:var(--dna-ink); fill:none; pointer-events:none; }
+.piece.rna .chevron { stroke:var(--rna-ink); }
+.piece { cursor: grab; outline: none; }
+.piece.locked { cursor: default; }
+.piece.sel path, .piece:focus-visible path { stroke: var(--focus); stroke-width: 3; }
+.piece.flag path { stroke: var(--bad); stroke-width: 3; stroke-dasharray: 5 3; }
+.ghost { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; }
+.ghost.no { stroke: var(--bad); }
+.tray-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; fill: var(--muted); }
+.hit { fill: transparent; cursor: pointer; }
+.hit:hover, .hit:focus-visible { fill: var(--focus); fill-opacity: 0.18; outline: none; }
+.hit.wrong { fill: var(--bad); fill-opacity: 0.18; }
+.hit.right { fill: var(--ok); fill-opacity: 0.22; }
+.target circle { fill: var(--surface); stroke: var(--target); stroke-width: 2.5; cursor: pointer; }
+.target text { font-family: var(--font-mono); font-size: 11px; fill: var(--target); pointer-events: none; }
+.target.sel circle { fill: var(--target); }
+.target.sel text { fill: var(--surface); }
+.target.done circle { stroke: var(--ok); fill: var(--surface); cursor: default; }
+.target.done text { fill: var(--ok); }
+.target:focus-visible circle { stroke: var(--focus); stroke-width: 3.5; }
+.nickmark { stroke: var(--warn); stroke-width: 2.5; }
+.spot { fill: none; stroke: var(--target); stroke-width: 2.5; stroke-dasharray: 6 4; }
+.hintarrow { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+.hinttext { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
+@media (max-width: 520px) { h1 { font-size: 1.15rem; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">BISC 202 · Week 9 · DNA replication</span>
+    <h1>Replication fork builder</h1>
+  </header>
+
+  <ol class="steps" id="steps" aria-label="Progress"></ol>
+
+  <section class="brief" aria-live="polite">
+    <p id="brief"></p>
+    <p class="given" id="given"></p>
+  </section>
+
+  <div class="toolbar" id="toolbar">
+    <button class="btn" id="btnFlip" disabled title="Flip the selected piece (F, or double-click it)">Flip 5′ ↔ 3′</button>
+    <button class="btn" id="btnDel" disabled title="Remove the selected piece (Delete)">Remove</button>
+    <span class="spacer"></span>
+    <button class="btn" id="btnHint">Show reading direction</button>
+    <button class="btn" id="btnModel" hidden>Show a model answer for this step</button>
+    <button class="btn" id="btnNew">New layout</button>
+    <button class="btn" id="btnReset">Start again</button>
+    <button class="btn primary" id="btnCheck">Check</button>
+  </div>
+
+  <div class="material-key" aria-label="Materials"><span><i class="swatch parent"></i>Parental DNA</span><span><i class="swatch"></i>New DNA</span><span><i class="swatch rna"></i>RNA primer</span><span>E. coli · schematic</span></div>
+
+  <div class="board">
+    <svg id="stage" viewBox="0 0 1000 300" role="application" aria-label="Replication workspace. Tab to a piece, use the arrow keys to move it, F to flip it, Delete to remove it.">
+      <defs>
+        <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" style="fill: var(--muted)"></path>
+        </marker>
+      </defs>
+      <g id="gTemplates"></g>
+      <g id="gLanes"></g>
+      <g id="gHints"></g>
+      <g id="gPieces"></g>
+      <g id="gHits"></g>
+      <g id="gTargets"></g>
+      <g id="gDrag"></g>
+    </svg>
+  </div>
+
+  <p class="selinfo" id="selinfo" aria-live="polite"></p>
+
+  <div class="traywrap" id="traywrap">
+    <svg id="tray" viewBox="0 0 1000 86" aria-label="Parts tray"></svg>
+  </div>
+
+  <section class="enzymes" id="enzymes" hidden>
+    <p id="enzPrompt">Choose a purple marker on the diagram, then choose the enzyme that acts there.</p>
+    <div class="row" id="enzRow"></div>
+  </section>
+
+  <section class="feedback" id="feedback" aria-live="polite"></section>
+
+  <footer>
+    <p>Blocks represent stretches of DNA or RNA, not single nucleotides. Small chevrons mark 5′→3′ polarity, not enzyme movement.</p>
+    <p>Drag a piece from the tray onto a strand row; it snaps to the nearest slot. Click a piece to select it, then flip or remove it; double-click or double-tap also flips it. Keyboard: Tab to a piece, arrow keys move it, F flips, Delete removes. Nothing you do here is sent anywhere.</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+const P = "′";
+const NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const REDUCED = (() => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } })();
+
+/* ---------------- configuration ---------------- */
+function readConfig() {
+  const cfg = { mode: "practice", layout: "random" };
+  Object.assign(cfg, window.FORK_CONFIG || {});
+  try { const q = new URLSearchParams(location.search); for (const k of ["mode", "layout"]) if (q.get(k)) cfg[k] = q.get(k); } catch (e) {}
+  try { if ((location.hash || "") === "#check") cfg.mode = "check"; } catch (e) {}
+  return cfg;
+}
+const CFG = readConfig();
+
+/* ---------------- misconception and rule catalogue ----------------
+   Codes match BISC 202 qgen/concepts.py (MC...) and error_models.py (RP...).
+   Codes marked "new" are proposed additions. */
+const TAGS = {
+  MC151: { title: "A new strand runs parallel to its template",
+    text: "A new strand is antiparallel to its template: DNA polymerase reads the template 3" + P + "→5" + P + " while the new strand grows 5" + P + "→3" + P + ". Flip the pieces so the new strand's 5" + P + " end sits opposite the template's 3" + P + " end.",
+    learn: "Klug §11.3, Continuous and Discontinuous DNA Synthesis · Week 9 lecture: The replication fork" },
+  MC33: { title: "The lagging strand is drawn growing toward the fork",
+    text: "Both new strands grow 5" + P + "→3" + P + ". On the lagging side that direction points away from the fork, so each fragment grows away from it. A strand cannot be built 3" + P + "→5" + P + " to keep up with the fork.",
+    learn: "Klug §11.3, Fig. 11.11 · Week 9 lecture: The replication fork" },
+  MC32: { title: "DNA is added at a 5′ end",
+    text: "DNA polymerase adds nucleotides only to a free 3" + P + "-OH. Here DNA sits on the 5" + P + " side of a primer, or one strand changes direction partway, which polymerase cannot make.",
+    learn: "Klug §11.3, Fig. 11.10 · Week 9 lecture: The replication fork" },
+  MC150: { title: "A leading strand has no primer",
+    text: "Every new strand starts from an RNA primer, the leading strand included: it needs one where it begins. DNA polymerase cannot start a strand on its own.",
+    learn: "Klug §11.3, Fig. 11.11 (“RNA primers are used to initiate synthesis on both strands”)" },
+  MC158: { title: "A leading strand is in pieces",
+    text: "The leading strand grows toward the fork, so it is extended continuously as the fork opens. It needs one primer where it starts, not a primer for every stretch.",
+    learn: "Klug §11.3 · Week 9 lecture: The replication fork" },
+  MC159: { title: "A stretch of DNA starts without a primer",
+    text: "Each Okazaki fragment starts from its own RNA primer, made by primase. DNA polymerase can only extend an existing 3" + P + "-OH.",
+    learn: "Klug §11.3, Initiation of DNA Synthesis Using an RNA Primer" },
+  MC165: { title: "A lagging strand is made in one piece (new)",
+    text: "The lagging-strand template is exposed a little at a time as the fork moves. Each newly exposed stretch needs a new primer, so the lagging strand is made as several Okazaki fragments.",
+    learn: "Klug §11.3 · Week 9 lecture: The replication fork" },
+  MC152: { title: "This side copies the templates the same way as the other side",
+    text: "Leading and lagging are defined at each fork. The two forks of a bubble move apart, so a template copied continuously at one fork is copied in fragments at the other.",
+    learn: "Week 9 lecture slides 20–21 · Klug §11.1, Origins, Forks, and Units of Replication" },
+  LABEL: { title: "A strand and its template are mixed up (new)",
+    text: "“Leading strand” and “lagging strand” name the NEW strands. The parental strand each is copied from is its template. Klug's figures use both terms, so read labels carefully.",
+    learn: "Klug Figs 11.11 and 11.12" },
+  SWAP: { title: "Leading and lagging are swapped",
+    text: "The leading strand is the new strand whose 5" + P + "→3" + P + " growth points into the fork. Work it out from the template's polarity, not from which strand is on top.",
+    learn: "Klug §11.3 · Week 9 lecture: The replication fork" },
+  MC164: { title: "DNA polymerase I used to join fragments (new)",
+    text: "DNA polymerase I fills a gap by adding nucleotides, but it cannot make the last bond between two existing DNA ends. That bond closes a nick, and only DNA ligase seals it.",
+    learn: "Klug §11.3 and §11.4" },
+  RP12: { title: "Ligase chosen where an RNA primer is still in place",
+    text: "Ligase seals a nick between two DNA ends. The RNA primer has to be replaced with DNA by DNA polymerase I first.",
+    learn: "Klug §11.4 (“DNA polymerase I and DNA ligase … replace the RNA primers with DNA and join the Okazaki fragments”)" },
+  ENZ: { title: "That enzyme does a different job (new)",
+    text: "Helicase unwinds the fork. Primase lays down RNA primers. DNA polymerase III extends new strands from a 3" + P + " end. DNA polymerase I replaces primers with DNA. DNA ligase seals nicks.",
+    learn: "Klug §11.3 and §11.4, Fig. 11.13" },
+  NEWEST: { title: "Why the newest primer stays for now",
+    text: "No DNA lies beyond the newest primer yet, so there is no 3" + P + "-OH next to it for DNA polymerase I to extend. It is replaced after the next Okazaki fragment is made. At the end of a linear chromosome, that next fragment never comes.",
+    learn: "Klug §11.7, Telomeres and Chromosome End Replication" },
+  CONT: { title: "Why the leading strand needs no joining",
+    text: "The leading strand was made in one continuous piece from a single primer, so along it there are no primers to replace and no nicks to seal.",
+    learn: "Klug §11.3" },
+  INC: { title: "Not finished yet", text: "Part of this step is still empty.", learn: "" },
+};
+const BITS = ["MC151", "MC33", "MC32", "MC150", "MC158", "MC159", "MC165", "MC152", "LABEL", "SWAP", "MC164", "RP12", "ENZ", "NEWEST", "CONT", "INC"];
+
+/* ---------------- world geometry ---------------- */
+const SW = 56;                        // slot width
+const XO = 700;                       // the origin
+const M = 8, EXT = 11;                // slots per side, and after the fork moves on
+const Y = { top: 60, laneT: 98, dupT: 160, dupB: 184, laneB: 246, bot: 284 };
+const LANE_H = 24;
+const LANES = [{ id: "T", template: "top", y: Y.laneT }, { id: "B", template: "bottom", y: Y.laneB }];
+const sx = (slot) => XO + slot * SW;
+
+const STEPS = [
+  { id: 1, name: "Replication fork" }, { id: 2, name: "Replication bubble" },
+  { id: 3, name: "Fork progression" }, { id: 4, name: "Fork enzymes" },
+];
+
+let S = null;
+const SESSION = { first: {}, flips: 0, flags: 0, layoutLocked: false };   // survives "Start again"
+
+function newState(keepLayout) {
+  const rand = () => (Math.random() < 0.5 ? 1 : -1);
+  const t = keepLayout && S ? S.t : (CFG.layout === "canonical" ? 1 : rand());
+  const f = keepLayout && S ? S.f : (CFG.layout === "canonical" ? 1 : rand());
+  return {
+    t, f, side2: -f, stage: 1, sub: "build",
+    fork: { "1": M, "-1": -M },          // fork position in slots, by side
+    shown: { [f]: 1, [-f]: 0 },          // opacity of each side of the bubble
+    pieces: [], nextId: 1, sel: null, cam: null, busy: false,
+    checks: 0, hint: false, flagged: null, labelStep: 0, enz: null, qi: 0,
+  };
+}
+const tmplOrient = (which) => (which === "top" ? S.t : -S.t);        // +1: 5' at the left
+const needDir = (lane) => -tmplOrient(lane.template);
+const laneOf = (id) => LANES.find((l) => l.id === id);
+const sideRange = (side) => (side === 1 ? [0, S.fork["1"]] : [S.fork["-1"], 0]);
+const isLeading = (lane, side) => needDir(lane) === side;
+
+/* ---------------- animation ---------------- */
+function tween(ms, step, done) {
+  if (REDUCED || ms <= 0) { step(1); if (done) done(); return; }
+  const t0 = performance.now();
+  const frame = (now) => {
+    const k = Math.min(1, (now - t0) / ms);
+    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    step(e);
+    if (k < 1) requestAnimationFrame(frame); else if (done) done();
+  };
+  requestAnimationFrame(frame);
+}
+const lerp = (a, b, k) => a + (b - a) * k;
+
+/* ---------------- camera ---------------- */
+function camFor(view) {
+  const yTop = 12, h = 306;
+  if (view === "bubble") {
+    const L = sx(S.fork["-1"]) - 2 * SW - 24, R = sx(S.fork["1"]) + 2 * SW + 24;
+    return { x: L, y: yTop, w: R - L, h };
+  }
+  const side = view;                        // +1 or -1: one fork with the origin at its far end
+  const fs = S.fork[String(side)];
+  const near = sx(0) - side * 60, far = sx(fs) + side * (2 * SW + 24);
+  const L = Math.min(near, far), R = Math.max(near, far);
+  return { x: L, y: yTop, w: R - L, h };
+}
+function applyCam() {
+  const c = S.cam, svg = $("stage");
+  svg.setAttribute("viewBox", `${c.x} ${c.y} ${c.w} ${c.h}`);
+  const w = svg.clientWidth || svg.getBoundingClientRect().width || 1000;
+  svg.style.height = Math.round(Math.min(w * c.h / c.w, Math.max(280, window.innerHeight * .42))) + "px";
+}
+function moveCam(to, ms, done) {
+  const from = { ...S.cam };
+  tween(ms, (k) => { S.cam = { x: lerp(from.x, to.x, k), y: lerp(from.y, to.y, k), w: lerp(from.w, to.w, k), h: lerp(from.h, to.h, k) }; applyCam(); }, done);
+}
+window.addEventListener("resize", () => S && S.cam && applyCam());
+
+/* ---------------- model answers ---------------- */
+function modelLane(lane, lo, hi, f) {
+  const n = needDir(lane), out = [];
+  if (n === f) {                                       // leading: one primer far from the fork
+    const pr = n === 1 ? lo : hi - 1;
+    out.push({ kind: "rna", lane: lane.id, start: pr, len: 1, dir: n });
+    if (hi - lo > 1) out.push({ kind: "dna", lane: lane.id, start: n === 1 ? lo + 1 : lo, len: hi - lo - 1, dir: n });
+    return out;
+  }
+  const sizes = []; let left = hi - lo;
+  while (left > 0) { const k = Math.min(3, left); sizes.push(k); left -= k; }
+  if (sizes.length > 1 && sizes[sizes.length - 1] < 2) sizes[sizes.length - 2] += sizes.pop();
+  let edge = f === 1 ? hi : lo;
+  for (const k of sizes) {
+    const pr = f === 1 ? edge - 1 : edge;
+    out.push({ kind: "rna", lane: lane.id, start: pr, len: 1, dir: n });
+    if (k > 1) out.push({ kind: "dna", lane: lane.id, start: f === 1 ? edge - k : edge + 1, len: k - 1, dir: n });
+    edge = f === 1 ? edge - k : edge + k;
+  }
+  return out;
+}
+function modelForStage() {
+  const res = [];
+  if (S.stage === 1 || S.stage === 2) {
+    const side = S.stage === 1 ? S.f : S.side2;
+    const [lo, hi] = sideRange(side);
+    for (const lane of LANES) res.push(...modelLane(lane, lo, hi, side));
+  } else if (S.stage === 3) {
+    const side = S.side2, [lo, hi] = side === 1 ? [M, EXT] : [-EXT, -M];
+    for (const lane of LANES) {
+      if (isLeading(lane, side)) res.push({ kind: "dna", lane: lane.id, start: lo, len: hi - lo, dir: needDir(lane) });
+      else res.push(...modelLane(lane, lo, hi, side));
+    }
+  }
+  return res;
+}
+
+/* ---------------- placement ---------------- */
+function editableRange() {
+  if (S.stage === 1) return sideRange(S.f);
+  if (S.stage === 2) return sideRange(S.side2);
+  if (S.stage === 3) return S.side2 === 1 ? [M, EXT] : [-EXT, -M];
+  return [0, 0];
+}
+function canPlace(laneId, start, len, exceptId) {
+  const [lo, hi] = editableRange();
+  if (start < lo || start + len > hi) return false;
+  for (const p of S.pieces) if (p.lane === laneId && p.id !== exceptId && p.start < start + len && start < p.start + p.len) return false;
+  return true;
+}
+function addPiece(p) { const q = { id: S.nextId++, locked: false, ...p }; S.pieces.push(q); return q; }
+
+/* ---------------- drawing helpers ---------------- */
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v !== undefined && v !== null) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function clear(g) { while (g.firstChild) g.removeChild(g.firstChild); }
+function piecePath(x, y, w, dir, h = LANE_H) {
+  const r = h / 2;
+  return `M${x},${y-r} H${x+w} V${y+r} H${x} Z`;
+}
+function drawPieceShape(g, kind, x, y, w, dir, h = LANE_H) {
+  el("path", { d: piecePath(x, y, w, dir, h) }, g);
+  if (kind === "rna") for (let hx=x+6; hx<x+w-5; hx+=9) el("line", {x1:hx,y1:y-h/2+1,x2:hx-5,y2:y-h/2+8,class:"hatch"},g);
+  const cx = dir === 1 ? x+w-7 : x+7;
+  el("polyline", {points:`${cx-dir*3},${y-3} ${cx},${y} ${cx-dir*3},${y+3}`,class:"chevron"},g);
+  if (w >= 38) { const t = el("text", { x: x + w / 2, y: y + 4, "text-anchor": "middle", class: "inside" }, g); t.textContent = kind === "rna" ? "RNA" : "DNA"; }
+  const a = el("text", { x: x + 2, y: y - h / 2 - 3, class: "pol" }, g); a.textContent = dir === 1 ? "5" + P : "3" + P;
+  const b = el("text", { x: x + w - 2, y: y - h / 2 - 3, "text-anchor": "end", class: "pol" }, g); b.textContent = dir === 1 ? "3" + P : "5" + P;
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  renderSteps(); renderTemplates(); renderLanes(); renderHints(); renderPieces();
+  renderHits(); renderTargets(); renderTray(); renderChrome();
+}
+function renderSteps() {
+  const ol = $("steps"); clear(ol);
+  for (const st of STEPS) {
+    const li = document.createElement("li");
+    const done = S.stage > st.id || S.stage === "done";
+    li.className = done ? "done" : (S.stage === st.id ? "now" : "");
+    const d = document.createElement("span"); d.className = "dot"; d.textContent = done ? "✓" : st.id;
+    li.appendChild(d); li.appendChild(document.createTextNode(st.name));
+    if (S.stage === st.id) li.setAttribute("aria-current", "step");
+    ol.appendChild(li);
+  }
+}
+function endText(which, side) {          // side: -1 left end, +1 right end
+  const o = tmplOrient(which);
+  return (o === 1) === (side === -1) ? "5" + P : "3" + P;
+}
+function renderTemplates() {
+  const g = $("gTemplates"); clear(g);
+  for (const side of [1, -1]) {
+    const op = S.shown[side];
+    if (op <= 0) continue;
+    const hg = el("g", { style: `opacity:${op}` }, g);
+    const xf = sx(S.fork[String(side)]), xe = xf + side * (2 * SW + 4);
+    el("path", { class: "tmpl", d: `M${sx(0)},${Y.top} H${xf} L${xf + side * 30},${Y.dupT} H${xe}` }, hg);
+    el("path", { class: "tmpl", d: `M${sx(0)},${Y.bot} H${xf} L${xf + side * 30},${Y.dupB} H${xe}` }, hg);
+    const anchor = side === 1 ? "end" : "start";
+    const t1 = el("text", { x: xe, y: Y.dupT - 10, "text-anchor": anchor, class: "endlab" }, hg); t1.textContent = endText("top", side);
+    const t2 = el("text", { x: xe, y: Y.dupB + 22, "text-anchor": anchor, class: "endlab" }, hg); t2.textContent = endText("bottom", side);
+    const fm = el("text", { x: xf + side * 66, y: Y.top + 4, "text-anchor": "middle", class: "forkmark" }, hg);
+    fm.textContent = side === 1 ? "fork →" : "← fork";
+  }
+  // With only one side showing, the strands end at the origin: label those ends.
+  const solo = S.shown[S.side2];
+  if (solo < 1) {
+    const hg = el("g", { style: `opacity:${1 - solo}` }, g);
+    const side = -S.f, x = sx(0) + side * 6, anchor = side === 1 ? "start" : "end";
+    const a = el("text", { x, y: Y.top + 5, "text-anchor": anchor, class: "endlab" }, hg); a.textContent = endText("top", side);
+    const b = el("text", { x, y: Y.bot + 5, "text-anchor": anchor, class: "endlab" }, hg); b.textContent = endText("bottom", side);
+  }
+  if (solo > 0) {
+    const og = el("g", { style: `opacity:${solo}` }, g);
+    el("line", { class: "originmark", x1: sx(0), y1: Y.top - 18, x2: sx(0), y2: Y.bot + 18 }, og);
+    const ot = el("text", { x: sx(0), y: Y.top - 24, "text-anchor": "middle", class: "forkmark" }, og); ot.textContent = "origin";
+  }
+}
+function renderLanes() {
+  const g = $("gLanes"); clear(g);
+  for (const side of [1, -1]) {
+    const op = S.shown[side]; if (op <= 0) continue;
+    const hg = el("g", { style: `opacity:${op}` }, g);
+    const fs = S.fork[String(side)];
+    const n = Math.floor(Math.abs(fs) + 1e-6);
+    for (let k = 0; k < n; k++) {
+      const slot = side === 1 ? k : -k - 1;
+      for (const lane of LANES) el("rect", { class: "lanebg", x: sx(slot) + 1, y: lane.y - LANE_H / 2 - 2, width: SW - 2, height: LANE_H + 4, rx: 4 }, hg);
+    }
+  }
+}
+function renderHints() {
+  const g = $("gHints"); clear(g);
+  if (!S.hint) return;
+  const sides = [1, -1].filter((s) => S.shown[s] >= 1);
+  const lo = Math.min(...sides.map((s) => sideRange(s)[0])), hi = Math.max(...sides.map((s) => sideRange(s)[1]));
+  for (const [which, y] of [["top", Y.top + 15], ["bottom", Y.bot - 15]]) {
+    const o = tmplOrient(which), x1 = sx(lo) + 10, x2 = sx(hi) - 10;
+    const [a, b] = o === 1 ? [x2, x1] : [x1, x2];
+    el("line", { class: "hintarrow", "stroke-dasharray": "4 4", x1: a, y1: y, x2: b, y2: y }, g);
+    const t = el("text", { x: (x1 + x2) / 2, y: y + (which === "top" ? 14 : -6), "text-anchor": "middle", class: "hinttext" }, g);
+    t.textContent = "template read 3" + P + " → 5" + P;
+  }
+}
+function renderPieces() {
+  const g = $("gPieces"); clear(g);
+  for (const p of S.pieces) {
+    const lane = laneOf(p.lane), side = p.start < 0 ? -1 : 1;
+    const op = S.shown[side];
+    const x = sx(p.start) + 3, w = p.len * SW - 6;
+    const cls = ["piece", p.kind, p.dir === 1 ? "d1" : "d2"];
+    if (p.locked) cls.push("locked");
+    if (S.sel === p.id) cls.push("sel");
+    if (S.flagged && S.flagged.has(p.id)) cls.push("flag");
+    const pg = el("g", { class: cls.join(" "), tabindex: p.locked ? "-1" : "0", role: "button", "aria-label": describePiece(p), style: op < 1 ? `opacity:${op}` : null }, g);
+    pg.dataset.id = p.id;
+    drawPieceShape(pg, p.kind, x, lane.y, w, p.dir);
+    if (!p.locked) {
+      pg.addEventListener("pointerdown", (e) => startPieceDrag(e, p.id));
+      pg.addEventListener("keydown", (e) => pieceKey(e, p.id));
+      pg.addEventListener("focus", () => { S.sel = p.id; renderChrome(); });
+    }
+  }
+  // nicks (stage 4): a short tick where two DNA pieces of different fragments meet
+  if (S.enz) for (const nk of nicks()) {
+    const x = sx(nk.slot), y = laneOf(nk.lane).y;
+    el("line", { class: "nickmark", x1: x, y1: y - LANE_H / 2 - 4, x2: x, y2: y + LANE_H / 2 + 4 }, g);
+  }
+}
+function describePiece(p) {
+  const row = laneOf(p.lane).template === "top" ? "upper new-strand row" : "lower new-strand row";
+  const pol = p.dir === 1 ? "5" + P + " end at left, 3" + P + " end at right" : "3" + P + " end at left, 5" + P + " end at right";
+  return `${p.kind === "rna" ? "RNA primer" : "DNA"}, ${p.len} slot${p.len > 1 ? "s" : ""}, ${row}, ${pol}${p.locked ? ", fixed" : ""}`;
+}
+const TRAY = [{ kind: "dna", len: 4, x: 24 }, { kind: "dna", len: 2, x: 290 }, { kind: "dna", len: 1, x: 430 }, { kind: "rna", len: 1, x: 512 }];
+const TSW = 62;
+function renderTray() {
+  const tray = $("tray"); clear(tray);
+  const show = (S.stage === 1 || S.stage === 2 || S.stage === 3) && S.sub === "build";
+  $("traywrap").hidden = !show;
+  if (!show) return;
+  const tt = el("text", { x: 24, y: 18, class: "tray-title" }, tray); tt.textContent = "PARTS · DRAG ONTO A STRAND ROW";
+  for (const it of TRAY) {
+    const tg = el("g", { class: "piece d1 " + it.kind, tabindex: "0", role: "button",
+      "aria-label": `Add ${it.kind === "rna" ? "an RNA primer" : "DNA, " + it.len + " slots"}. Press Enter to place it in the first free space.` }, tray);
+    drawPieceShape(tg, it.kind, it.x, 56, it.len * TSW - 6, 1, 24);
+    tg.addEventListener("pointerdown", (e) => startTrayDrag(e, it));
+    tg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); keyboardAdd(it); } });
+  }
+  const note = el("text", { x: 600, y: 52, class: "forkmark" }, tray);
+  note.textContent = "5′ and 3′ labels show strand polarity.";
+}
+function renderChrome() {
+  const sel = S.pieces.find((p) => p.id === S.sel && !p.locked);
+  const building = (S.stage === 1 || S.stage === 2 || S.stage === 3) && S.sub === "build";
+  $("btnFlip").hidden = $("btnDel").hidden = !building;
+  $("btnFlip").disabled = !sel || S.busy; $("btnDel").disabled = !sel || S.busy;
+  $("selinfo").textContent = sel && building ? describePiece(sel) : "";
+  $("btnHint").hidden = !building || CFG.mode === "check";
+  $("btnHint").textContent = S.hint ? "Hide reading direction" : "Show reading direction";
+  $("btnModel").hidden = !building || CFG.mode === "check" || S.checks < 2;
+  $("btnNew").hidden = SESSION.layoutLocked;
+  $("btnCheck").hidden = !building;
+  $("btnCheck").disabled = S.busy;
+  $("btnCheck").textContent = CFG.mode === "check" ? "Submit this step" : "Check";
+  $("brief").textContent = briefText();
+  $("given").textContent = `Given: top parental strand with its 5${P} end at the ${S.t === 1 ? "left" : "right"}.`;
+  $("enzymes").hidden = !(S.stage === 4 && S.sub === "enzymes");
+  if (S.stage === 4 && S.sub === "enzymes") renderEnzymeRow();
+}
+function briefText() {
+  if (S.stage === 1 && S.sub === "build") return "Build both new strands at this replication fork. Use RNA primers and DNA, and flip each piece so its 5" + P + " and 3" + P + " ends are right.";
+  if (S.stage === 1 && S.sub === "label") return S.labelStep === 0 ? "Click the leading strand." : "Now click the lagging-strand template.";
+  if (S.stage === 2) return "This is the whole replication bubble. Your fork is on one side of the origin; build the new strands at the fork on the other side.";
+  if (S.stage === 3) return "Back to one fork. The fork has moved on and unwound more template. Add what is made on the newly exposed stretch.";
+  if (S.stage === 4 && S.sub === "enzymes") return "Each purple marker is a place where an enzyme is working. Choose a marker, then choose the enzyme.";
+  if (S.stage === 4 && S.sub === "why") return "Some places have no enzyme at all. Look at the highlighted spot and answer the question below.";
+  return S.stage === "done" ? "All four steps are complete." : "This fork is complete. Continue to the replication bubble.";
+}
+
+/* ---------------- pointer interaction ---------------- */
+const stage = $("stage");
+function toStage(e) {
+  const pt = stage.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  return pt.matrixTransform(stage.getScreenCTM().inverse());
+}
+let drag = null, lastClick = { id: null, t: 0 };
+function startTrayDrag(e, it) {
+  if (S.busy) return;
+  e.preventDefault();
+  const p0 = toStage(e);
+  drag = { kind: it.kind, len: it.len, dir: 1, fromId: null, grabDX: (it.len * SW) / 2, x: p0.x, y: p0.y, sx: e.clientX, sy: e.clientY, moved: false };
+  beginDrag();
+}
+function startPieceDrag(e, id) {
+  if (S.busy) return;
+  e.preventDefault();
+  const p = S.pieces.find((q) => q.id === id), p0 = toStage(e);
+  drag = { kind: p.kind, len: p.len, dir: p.dir, fromId: id, grabDX: p0.x - (sx(p.start) + 3), x: p0.x, y: p0.y, sx: e.clientX, sy: e.clientY, moved: false };
+  S.sel = id;
+  beginDrag();
+}
+function beginDrag() {
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+  document.addEventListener("pointercancel", onUp);
+}
+function snapTarget() {
+  let best = null;
+  for (const lane of LANES) { const d = Math.abs(drag.y - lane.y); if (d < 40 && (!best || d < best.d)) best = { lane, d }; }
+  if (!best) return null;
+  const [lo, hi] = editableRange();
+  let start = Math.round((drag.x - drag.grabDX - XO - 3) / SW);
+  start = Math.max(lo, Math.min(hi - drag.len, start));
+  return { lane: best.lane, start, ok: canPlace(best.lane.id, start, drag.len, drag.fromId) };
+}
+function onMove(e) {
+  if (!drag) return;
+  const p = toStage(e); drag.x = p.x; drag.y = p.y;
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) drag.moved = true;
+  drawDrag();
+}
+function drawDrag() {
+  const g = $("gDrag"); clear(g);
+  if (!drag || !drag.moved) return;
+  const tgt = snapTarget();
+  if (tgt) el("rect", { class: "ghost" + (tgt.ok ? "" : " no"), x: sx(tgt.start) + 1, y: tgt.lane.y - LANE_H / 2 - 4, width: drag.len * SW - 2, height: LANE_H + 8, rx: 6 }, g);
+  const fg = el("g", { class: `piece ${drag.kind} ${drag.dir === 1 ? "d1" : "d2"}`, style: "opacity:0.85" }, g);
+  drawPieceShape(fg, drag.kind, drag.x - drag.grabDX, drag.y, drag.len * SW - 6, drag.dir);
+}
+function onUp() {
+  document.removeEventListener("pointermove", onMove);
+  document.removeEventListener("pointerup", onUp);
+  document.removeEventListener("pointercancel", onUp);
+  const d = drag; clear($("gDrag"));
+  if (!d) return;
+  if (!d.moved) {
+    drag = null;
+    // a click selects; a second click on the same piece within 400 ms flips it
+    if (d.fromId) {
+      const now = Date.now();
+      if (lastClick.id === d.fromId && now - lastClick.t < 400) { lastClick = { id: null, t: 0 }; flip(d.fromId); return; }
+      lastClick = { id: d.fromId, t: now };
+    }
+    render(); return;
+  }
+  const tgt = snapTarget(); drag = null;
+  if (tgt && tgt.ok) {
+    if (d.fromId) { const p = S.pieces.find((q) => q.id === d.fromId); p.lane = tgt.lane.id; p.start = tgt.start; S.sel = p.id; }
+    else { const p = addPiece({ kind: d.kind, lane: tgt.lane.id, start: tgt.start, len: d.len, dir: d.dir }); S.sel = p.id; }
+  } else if (d.fromId && !tgt) {
+    S.pieces = S.pieces.filter((q) => q.id !== d.fromId); S.sel = null;
+  }
+  S.flagged = null; render();
+}
+function pieceKey(e, id) {
+  const p = S.pieces.find((q) => q.id === id);
+  if (!p || p.locked || S.busy) return;
+  const k = e.key;
+  if (k === "f" || k === "F") { e.preventDefault(); flip(id); return; }
+  if (k === "Delete" || k === "Backspace") { e.preventDefault(); removePiece(id); return; }
+  let lane = p.lane, start = p.start;
+  if (k === "ArrowLeft") start--; else if (k === "ArrowRight") start++;
+  else if (k === "ArrowUp" || k === "ArrowDown") lane = p.lane === "T" ? "B" : "T";
+  else return;
+  e.preventDefault();
+  const [lo, hi] = editableRange();
+  start = Math.max(lo, Math.min(hi - p.len, start));
+  if (canPlace(lane, start, p.len, id)) { p.lane = lane; p.start = start; S.flagged = null; render(); focusPiece(id); announce(describePiece(p)); }
+  else announce("That space is taken.");
+}
+function keyboardAdd(it) {
+  const [lo, hi] = editableRange();
+  for (const lane of LANES) for (let s = lo; s <= hi - it.len; s++) if (canPlace(lane.id, s, it.len)) {
+    const p = addPiece({ kind: it.kind, lane: lane.id, start: s, len: it.len, dir: 1 });
+    S.sel = p.id; render(); focusPiece(p.id); announce("Placed. " + describePiece(p)); return;
+  }
+  announce("There is no free space for that piece.");
+}
+function focusPiece(id) { const n = $("gPieces").querySelector(`[data-id="${id}"]`); if (n) n.focus(); }
+function flip(id) {
+  const p = S.pieces.find((q) => q.id === id);
+  if (!p || p.locked || S.busy) return;
+  p.dir = -p.dir; S.sel = id; SESSION.flips++; S.flagged = null; render(); focusPiece(id); announce(describePiece(p));
+}
+function removePiece(id) { S.pieces = S.pieces.filter((q) => q.id !== id); S.sel = null; render(); }
+let liveEl = null;
+function announce(msg) {
+  if (!liveEl) { liveEl = document.createElement("div"); liveEl.setAttribute("aria-live", "polite"); liveEl.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"; document.body.appendChild(liveEl); }
+  liveEl.textContent = msg;
+}
+
+/* ---------------- rules ---------------- */
+function analyseSegment(lane, lo, hi, f) {
+  const out = [], n = needDir(lane), leading = n === f;
+  const all = S.pieces.filter((p) => p.lane === lane.id && p.start < hi && p.start + p.len > lo).sort((a, b) => a.start - b.start);
+  const placed = all.filter((p) => !p.locked);
+  if (!placed.length && !all.length) return [{ tag: "INC", ids: [] }];
+  const wrong = placed.filter((p) => p.dir !== n);
+  if (wrong.length) {
+    const tag = wrong.length < placed.length ? "MC32" : (leading ? "MC151" : (wrong[0].dir === f ? "MC33" : "MC151"));
+    return [{ tag, ids: wrong.map((p) => p.id) }];
+  }
+  const range = []; for (let i = lo; i < hi; i++) range.push(i);
+  const seq = n === 1 ? range : range.slice().reverse();
+  const at = new Map(); for (const p of all) for (let i = p.start; i < p.start + p.len; i++) at.set(i, p);
+  let inFrag = false, prev = null, primers = 0;
+  const unprimed = [], primerNoDNA = [];
+  for (const i of seq) {
+    const p = at.get(i);
+    if (!p) { inFrag = false; prev = null; continue; }
+    if (p === prev) continue;
+    if (p.kind === "rna") {
+      primers++; inFrag = true;
+      const q = at.get(n === 1 ? p.start + p.len : p.start - 1);
+      const r = at.get(n === 1 ? p.start - 1 : p.start + p.len);
+      if ((!q || q.kind === "rna") && r && r.kind === "dna" && unprimed.includes(r.id)) primerNoDNA.push(p.id);
+    } else { if (!inFrag) unprimed.push(p.id); inFrag = true; }
+    prev = p;
+  }
+  let stretches = 0, was = false; for (const i of seq) { const h = at.has(i); if (h && !was) stretches++; was = h; }
+  const filled = range.filter((i) => at.has(i)).length;
+  if (primerNoDNA.length) {
+    out.push({ tag: "MC32", ids: primerNoDNA.concat(unprimed) });
+    if (filled < hi - lo - 1) out.push({ tag: "INC", ids: [] });
+    return out;
+  }
+  if (leading) {
+    if (primers === 0) out.push({ tag: "MC150", ids: unprimed });
+    else if (unprimed.length) out.push({ tag: "MC159", ids: unprimed });
+    if (primers > 1 || stretches > 1) out.push({ tag: "MC158", ids: all.filter((p) => p.kind === "rna").map((p) => p.id) });
+  } else {
+    if (unprimed.length) out.push({ tag: "MC159", ids: unprimed });
+    if (primers <= 1 && !unprimed.length && hi - lo >= 6) out.push({ tag: "MC165", ids: all.map((p) => p.id) });
+  }
+  if (filled < hi - lo - 1) out.push({ tag: "INC", ids: [] });
+  return out;
+}
+function pattern(lane, side) {
+  const [lo, hi] = sideRange(side);
+  const items = S.pieces.filter((p) => p.lane === lane.id && p.start < hi && p.start + p.len > lo);
+  if (!items.length) return null;
+  const primers = items.filter((p) => p.kind === "rna").length;
+  return `${primers > 1 ? "frag" : "cont"}:${[...new Set(items.map((p) => p.dir))].join("")}`;
+}
+function stageFindings() {
+  const out = [];
+  if (S.stage === 1 || S.stage === 2) {
+    const side = S.stage === 1 ? S.f : S.side2, [lo, hi] = sideRange(side);
+    for (const lane of LANES) out.push(...analyseSegment(lane, lo, hi, side));
+    if (S.stage === 2) for (const lane of LANES) {
+      const a = pattern(lane, S.f), b = pattern(lane, S.side2);
+      if (a && b && a === b) out.push({ tag: "MC152", ids: S.pieces.filter((p) => p.lane === lane.id && !p.locked).map((p) => p.id) });
+    }
+  } else if (S.stage === 3) {
+    const [lo, hi] = sideRange(S.side2);
+    for (const lane of LANES) out.push(...analyseSegment(lane, lo, hi, S.side2));
+  }
+  return out;
+}
+
+/* ---------------- feedback cards ---------------- */
+function showCards(cards) {
+  const fb = $("feedback"); clear(fb);
+  for (const c of cards) fb.appendChild(makeCard(c));
+}
+function makeCard(c) {
+  const d = document.createElement("div"); d.className = "card " + c.cls;
+  const h = document.createElement("h3"); h.textContent = c.title; d.appendChild(h);
+  if (c.text) { const p = document.createElement("p"); p.textContent = c.text; d.appendChild(p); }
+  if (c.learn) { const l = document.createElement("p"); l.className = "learn"; l.textContent = "Where to learn this: " + c.learn; d.appendChild(l); }
+  return d;
+}
+const cardFor = (tag) => ({ cls: tag === "INC" ? "info" : "bad", ...TAGS[tag] });
+function record(stageKey, tags) {
+  // the first submission of each step is the diagnostic; later ones are practice
+  if (SESSION.first[stageKey] === undefined) SESSION.first[stageKey] = maskOf(tags);
+}
+function maskOf(tags) { let m = 0; for (const t of tags) { const i = BITS.indexOf(t); if (i >= 0) m |= 1 << i; } return m; }
+function success(title, text, cont, label = "Continue") {
+  const fb = $("feedback"); clear(fb);
+  const d = makeCard({ cls: "win", title, text });
+  if (cont) {
+    const row = document.createElement("div"); row.className = "row";
+    const b = document.createElement("button"); b.className = "btn primary"; b.textContent = label;
+    b.addEventListener("click", () => { b.disabled = true; cont(); });
+    row.appendChild(b); d.appendChild(row);
+    setTimeout(() => b.focus(), 50);
+  }
+  fb.appendChild(d);
+  try { d.scrollIntoView({ block: "nearest", behavior: REDUCED ? "auto" : "smooth" }); } catch (e) {}
+}
+
+/* ---------------- checking each building step ---------------- */
+function runCheck() {
+  if (S.busy) return;
+  const findings = stageFindings();
+  const tags = [...new Set(findings.map((f) => f.tag))];
+  record(String(S.stage), tags);
+  S.checks++;
+  S.flagged = new Set(findings.flatMap((f) => f.ids));
+  if (tags.length) {
+    render();
+    const real = tags.filter((t) => t !== "INC").map(cardFor);
+    if (tags.includes("INC")) real.push(cardFor("INC"));
+    showCards(real);
+    return;
+  }
+  S.flagged = null;
+  lockAll();
+  if (S.stage === 1) {
+    S.sub = "label"; S.labelStep = 0; S.labelFirst = [];
+    render();
+    success("That fork works", "Both new strands run antiparallel to their templates and grow 5" + P + "→3" + P + " from RNA primers: one continuously toward the fork, the other in fragments away from it. Next, name the strands: click the leading strand on the diagram.");
+    return;
+  }
+  if (S.stage === 2) {
+    render();
+    success("Your replication bubble is complete",
+      "Each template is copied continuously at one fork and in Okazaki fragments at the other, because the two forks move apart. Each leading strand starts from its own primer near the origin. Next, we follow one fork as it keeps moving.",
+      toStage3);
+    return;
+  }
+  if (S.stage === 3) {
+    render();
+    success("Right: the fork moved and both strands kept up",
+      "The leading strand simply grew on from its 3" + P + " end, with no new primer. The lagging side needed a new primer at the fork and a new Okazaki fragment growing back toward the last one. Next: the enzymes that do all this.",
+      toStage4);
+  }
+}
+function lockAll() { for (const p of S.pieces) p.locked = true; S.sel = null; }
+
+/* ---------------- step 1b: naming the strands ---------------- */
+function renderHits() {
+  const g = $("gHits"); clear(g);
+  if (!(S.stage === 1 && S.sub === "label")) return;
+  const [lo, hi] = sideRange(S.f);
+  const x = sx(lo), w = (hi - lo) * SW;
+  const targets = [
+    { id: "tTop", y: Y.top, kind: "template", which: "top", name: "top parental strand" },
+    { id: "lT", y: Y.laneT, kind: "lane", lane: "T", name: "upper new strand" },
+    { id: "lB", y: Y.laneB, kind: "lane", lane: "B", name: "lower new strand" },
+    { id: "tBot", y: Y.bot, kind: "template", which: "bottom", name: "bottom parental strand" },
+  ];
+  for (const t of targets) {
+    const r = el("rect", { class: "hit" + (S.hitMark && S.hitMark.id === t.id ? " " + S.hitMark.cls : ""), x, y: t.y - 15, width: w, height: 30, rx: 6, tabindex: "0", role: "button", "aria-label": "Choose the " + t.name }, g);
+    const act = () => chooseStrand(t);
+    r.addEventListener("click", act);
+    r.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } });
+  }
+}
+function chooseStrand(t) {
+  if (S.busy) return;
+  const leadLane = LANES.find((l) => isLeading(l, S.f));
+  const lagLane = LANES.find((l) => !isLeading(l, S.f));
+  let tag = null;
+  if (S.labelStep === 0) {                      // the leading strand
+    if (t.kind === "template") tag = "LABEL";
+    else if (t.lane !== leadLane.id) tag = "SWAP";
+  } else {                                      // the lagging-strand template
+    if (t.kind === "lane") tag = "LABEL";
+    else if (t.which !== lagLane.template) tag = "SWAP";
+  }
+  const key = "1" + (S.labelStep === 0 ? "a" : "b");
+  if (SESSION.first[key] === undefined) SESSION.first[key] = maskOf(tag ? [tag] : []);
+  if (tag) {
+    S.hitMark = { id: t.id, cls: "wrong" }; render();
+    showCards([cardFor(tag)]);
+    return;
+  }
+  S.hitMark = { id: t.id, cls: "right" };
+  if (S.labelStep === 0) {
+    S.labelStep = 1; render();
+    success("Yes, that is the leading strand", "It is the NEW strand made continuously, growing 5" + P + "→3" + P + " toward the fork. Now click the lagging-strand template: the parental strand that the lagging strand is copied from.");
+    return;
+  }
+  S.sub = "done"; SESSION.layoutLocked = true; S.hitMark = null; render();
+  success("Fork complete, and the strands named correctly",
+    "The lagging-strand template is the parental strand whose new partner has to be made in fragments. Next, we zoom out to the whole replication bubble. Your pieces stay where you put them.",
+    toStage2);
+}
+
+/* ---------------- transitions ---------------- */
+function toStage2() {
+  S.busy = true; S.stage = 2; S.sub = "build"; S.checks = 0; S.hint = false;
+  clear($("feedback")); render();
+  moveCam(camFor("bubble"), 1300, () => {
+    tween(700, (k) => { S.shown[S.side2] = k; renderTemplates(); renderLanes(); }, () => { S.busy = false; render(); });
+  });
+}
+function toStage3() {
+  S.busy = true; S.stage = 3; S.sub = "build"; S.checks = 0; S.hint = false;
+  clear($("feedback")); render();
+  const side = S.side2, key = String(side);
+  // zoom to the second fork, sized for where it is going, then move it on
+  const target = (() => { const keep = S.fork[key]; S.fork[key] = side * EXT; const c = camFor(side); S.fork[key] = keep; return c; })();
+  moveCam(target, 1300, () => {
+    const from = S.fork[key];
+    tween(1600, (k) => { S.fork[key] = lerp(from, side * EXT, k); renderTemplates(); renderLanes(); },
+      () => { S.fork[key] = side * EXT; S.busy = false; render(); announce("The fork has moved three slots. New template is exposed next to the fork."); });
+  });
+}
+function toStage4() {
+  S.busy = true; S.stage = 4; S.sub = "enzymes";
+  clear($("feedback"));
+  normalise();
+  S.enz = { targets: buildTargets(), sel: null, done: new Set() };
+  render();
+  S.busy = false;
+  selectFirstTarget();
+}
+
+/* ---------------- step 4: enzymes ---------------- */
+function normalise() {
+  // one piece per fragment: merge DNA pieces that touch with no primer between,
+  // then number fragments 5'->3' along each strand.
+  for (const lane of LANES) {
+    const n = needDir(lane);
+    let items = S.pieces.filter((p) => p.lane === lane.id).sort((a, b) => a.start - b.start);
+    for (let i = 0; i < items.length - 1; i++) {
+      const a = items[i], b = items[i + 1];
+      if (a.kind === "dna" && b.kind === "dna" && a.start + a.len === b.start) {
+        a.len += b.len; S.pieces = S.pieces.filter((p) => p !== b); items.splice(i + 1, 1); i--;
+      }
+    }
+    items = S.pieces.filter((p) => p.lane === lane.id).sort((a, b) => (a.start - b.start) * n);
+    let frag = 0, prevEnd = null;
+    for (const p of items) {
+      const touching = prevEnd !== null && (n === 1 ? p.start === prevEnd : p.start + p.len === prevEnd);
+      if (p.kind === "rna" || !touching) frag++;
+      p.frag = frag; prevEnd = n === 1 ? p.start + p.len : p.start;
+    }
+  }
+}
+function viewRange() { const [lo, hi] = sideRange(S.side2); return [lo, hi]; }
+function junctions(laneId) {
+  // adjacent pairs along a lane, ordered 5'->3' along the new strand
+  const lane = laneOf(laneId), n = needDir(lane);
+  const items = S.pieces.filter((p) => p.lane === laneId).sort((a, b) => a.start - b.start);
+  const out = [];
+  for (let i = 0; i < items.length - 1; i++) {
+    const a = items[i], b = items[i + 1];
+    if (a.start + a.len !== b.start) continue;
+    const up = n === 1 ? a : b, down = n === 1 ? b : a;   // up is on the 5' side
+    out.push({ lane: laneId, slot: b.start, up, down });
+  }
+  return out;
+}
+function nicks() {
+  const [lo, hi] = viewRange(), out = [];
+  for (const lane of LANES) for (const j of junctions(lane.id))
+    if (j.up.kind === "dna" && j.down.kind === "dna" && j.up.frag !== j.down.frag && j.slot >= lo && j.slot <= hi) out.push(j);
+  return out;
+}
+function buildTargets() {
+  const side = S.side2, fx = sx(S.fork[String(side)]);
+  const lead = LANES.find((l) => isLeading(l, side)), lag = LANES.find((l) => !isLeading(l, side));
+  const lagTemplateY = lag.template === "top" ? Y.top : Y.bot;
+  const t = [
+    { id: "helicase", want: "helicase", x: fx + side * 18, y: (Y.dupT + Y.dupB) / 2, label: "the fork, where the helix opens" },
+    { id: "primase", want: "primase", x: fx - side * 6, y: lagTemplateY + (lag.template === "top" ? 16 : -16), label: "newly exposed lagging-strand template at the fork" },
+    { id: "pol3", want: "pol3", x: fx - side * 8, y: lead.y + LANE_H / 2 + 12, label: "the growing 3" + P + " end of the leading strand" },
+  ];
+  return t.concat(polITargets());
+}
+function polITargets() {
+  const [lo, hi] = viewRange(), out = [];
+  for (const lane of LANES) for (const j of junctions(lane.id)) {
+    if (j.up.kind === "dna" && j.down.kind === "rna" && j.slot >= lo && j.slot <= hi)
+      out.push({ id: `pol1:${lane.id}:${j.slot}`, want: "pol1", x: sx(j.slot), y: laneOf(lane.id).y + LANE_H / 2 + 12, j, label: "where a DNA 3" + P + " end meets the next RNA primer" });
+  }
+  for (const j of nicks()) out.push({ id: `lig:${j.lane}:${j.slot}`, want: "ligase", x: sx(j.slot), y: laneOf(j.lane).y + LANE_H / 2 + 12, j, label: "a nick between two DNA pieces" });
+  return out;
+}
+const ENZ = [["helicase", "Helicase"], ["primase", "Primase"], ["pol3", "DNA polymerase III"], ["pol1", "DNA polymerase I"], ["ligase", "DNA ligase"]];
+function renderTargets() {
+  const g = $("gTargets"); clear(g);
+  if (!S.enz) return;
+  if (S.sub === "enzymes") {
+    let i = 0;
+    for (const t of S.enz.targets) {
+      i++;
+      const done = S.enz.done.has(t.id);
+      const tg = el("g", { class: "target" + (S.enz.sel === t.id ? " sel" : "") + (done ? " done" : ""), tabindex: done ? "-1" : "0", role: "button",
+        "aria-label": (done ? "Done: " : "Marker: ") + t.label }, g);
+      el("circle", { cx: t.x, cy: t.y, r: 10 }, tg);
+      const tx = el("text", { x: t.x, y: t.y + 4, "text-anchor": "middle" }, tg); tx.textContent = done ? "✓" : "?";
+      if (!done) {
+        const act = () => { S.enz.sel = t.id; render(); };
+        tg.addEventListener("click", act);
+        tg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } });
+      }
+    }
+  }
+  if (S.sub === "why" && S.spot) el("rect", { class: "spot", x: S.spot.x, y: S.spot.y, width: S.spot.w, height: S.spot.h, rx: 8 }, g);
+}
+function selectFirstTarget() {
+  const t = S.enz.targets.find((x) => !S.enz.done.has(x.id));
+  S.enz.sel = t ? t.id : null; render();
+  const n = $("gTargets").querySelector(".target.sel"); if (n) n.focus();
+}
+function renderEnzymeRow() {
+  const row = $("enzRow"); clear(row);
+  const t = S.enz && S.enz.targets.find((x) => x.id === S.enz.sel);
+  $("enzPrompt").textContent = t ? `Which enzyme acts at ${t.label}?` : "Choose a purple marker on the diagram.";
+  for (const [id, name] of ENZ) {
+    const b = document.createElement("button"); b.className = "btn"; b.textContent = name; b.disabled = !t || S.busy;
+    b.addEventListener("click", () => chooseEnzyme(t, id));
+    row.appendChild(b);
+  }
+}
+function enzymeTag(t, chose) {
+  if (chose === t.want) return null;
+  if (t.want === "pol1") return chose === "ligase" ? "RP12" : "ENZ";
+  if (t.want === "ligase") return chose === "pol1" ? "MC164" : "ENZ";
+  if (t.want === "primase") return chose === "pol3" || chose === "pol1" ? "MC159" : "ENZ";
+  if (t.want === "pol3") return chose === "primase" ? "MC158" : "ENZ";
+  return "ENZ";
+}
+function chooseEnzyme(t, chose) {
+  if (!t || S.busy) return;
+  const tag = enzymeTag(t, chose);
+  const key = "4:" + t.want;
+  if (SESSION.first[key] === undefined) SESSION.first[key] = maskOf(tag ? [tag] : []);
+  if (tag) { showCards([cardFor(tag)]); return; }
+  S.enz.done.add(t.id);
+  if (t.want === "pol1") {
+    // the primer becomes DNA of the upstream fragment, leaving a nick
+    S.busy = true;
+    const { up, down } = t.j;
+    // RNA leaves before replacement DNA is shown; molecular material never colour-morphs.
+    const pieceEl = $("gPieces").querySelector(`[data-id="${down.id}"]`);
+    if (pieceEl) pieceEl.style.opacity = "0";
+    const doneEl = $("gTargets").querySelector(".target.sel"); if (doneEl) doneEl.classList.add("done");
+    setTimeout(() => {
+      down.kind = "dna";
+      const lo = Math.min(up.start, down.start), hi = Math.max(up.start + up.len, down.start + down.len);
+      up.start = lo; up.len = hi - lo; S.pieces = S.pieces.filter((p) => p !== down);
+      refreshTargets();
+      S.busy = false;
+      showCards([{ cls: "ok", title: "DNA polymerase I", text: "It extended the 3" + P + " end next to the primer and replaced the RNA with DNA. A nick is left where the new DNA meets the next fragment.", learn: "" }]);
+      afterEnzyme();
+    }, REDUCED ? 0 : 500);
+    return;
+  }
+  if (t.want === "ligase") {
+    const { up, down } = t.j;
+    const lo = Math.min(up.start, down.start), hi = Math.max(up.start + up.len, down.start + down.len);
+    up.start = lo; up.len = hi - lo; up.frag = Math.min(up.frag, down.frag);
+    S.pieces = S.pieces.filter((p) => p !== down);
+    refreshTargets();
+    showCards([{ cls: "ok", title: "DNA ligase", text: "It sealed the nick with a phosphodiester bond: the two fragments are now one strand.", learn: "" }]);
+    afterEnzyme(); return;
+  }
+  const msg = { helicase: "Helicase unwinds the double helix at the fork.", primase: "Primase lays down the next RNA primer on the lagging-strand template as it is exposed.", pol3: "DNA polymerase III extends the leading strand from its 3" + P + " end as the fork opens." }[t.want];
+  showCards([{ cls: "ok", title: ENZ.find((e) => e[0] === t.want)[1], text: msg, learn: "" }]);
+  afterEnzyme();
+}
+function refreshTargets() {
+  // fixed markers and finished ones stay; junction markers are recomputed
+  const keep = S.enz.targets.filter((x) => !x.j || S.enz.done.has(x.id));
+  S.enz.targets = keep.concat(polITargets().filter((x) => !S.enz.done.has(x.id)));
+}
+function afterEnzyme() {
+  const left = S.enz.targets.filter((x) => !S.enz.done.has(x.id));
+  if (left.length) { selectFirstTarget(); return; }
+  S.enz.sel = null; render();
+  success("Every enzyme is in place",
+    "The helix is opened, primed, extended, and the lagging-strand fragments are joined into one strand. Some places still have no enzyme at all; let's look at why.",
+    () => startWhy(0));
+}
+
+/* ---------------- step 4b: why is nothing here? ---------------- */
+function whyQuestions() {
+  const side = S.side2, fs = S.fork[String(side)];
+  const lag = LANES.find((l) => !isLeading(l, side)), lead = LANES.find((l) => isLeading(l, side));
+  const newest = S.pieces.filter((p) => p.lane === lag.id && p.kind === "rna" && (side === 1 ? p.start >= 0 : p.start < 0))
+    .sort((a, b) => side * (b.start - a.start))[0];
+  const qs = [];
+  if (newest) qs.push({
+    id: "q1", spot: { x: sx(newest.start) - 6, y: lag.y - LANE_H / 2 - 18, w: SW + 12, h: LANE_H + 26 },
+    title: "No enzyme is replacing this primer",
+    ask: "This primer, on the newest Okazaki fragment at the fork, is still RNA. Why is nothing replacing it yet?",
+    choices: [
+      ["No DNA lies beyond it yet, so there is no 3" + P + " end for DNA polymerase I to extend", null],
+      ["DNA ligase has to seal it first", "RP12"],
+      ["Primers on the newest fragment are never replaced", "NEWEST"],
+      ["Only the leading strand's primers are replaced", "MC150"],
+    ],
+    right: "Correct. Once the fork moves on, primase starts the next fragment, and that fragment's 3" + P + " end gives DNA polymerase I somewhere to start. At the very end of a linear chromosome, no next fragment comes, which is the end-replication problem.",
+  });
+  const [lo, hi] = sideRange(side);
+  qs.push({
+    id: "q2", spot: { x: sx(Math.min(lo, hi) + 1), y: lead.y - LANE_H / 2 - 18, w: (Math.abs(hi - lo) - 2) * SW, h: LANE_H + 26 },
+    title: "No DNA polymerase I or ligase along here",
+    ask: "Along the leading strand there was nothing for DNA polymerase I or DNA ligase to do. Why not?",
+    choices: [
+      ["It was made in one continuous piece from a single primer, so it has no primers to replace and no nicks to seal", null],
+      ["The leading strand has no primer at all", "MC150"],
+      ["The leading strand is made 3" + P + "→5" + P + ", which needs no joining", "MC33"],
+      ["Ligase only works on the lagging-strand template", "LABEL"],
+    ],
+    right: "Correct. Its one primer sits at the origin, where the other fork's lagging strand supplies the 3" + P + " end that DNA polymerase I extends to replace it.",
+  });
+  return qs;
+}
+function startWhy(i) {
+  const qs = whyQuestions();
+  if (i >= qs.length) return finishAll();
+  const q = qs[i];
+  S.sub = "why"; S.spot = q.spot; render();
+  const fb = $("feedback"); clear(fb);
+  const card = makeCard({ cls: "ask", title: q.title, text: q.ask });
+  const box = document.createElement("div"); box.className = "choices";
+  const order = q.choices.map((c, k) => [c, k]);
+  for (let k = order.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [order[k], order[j]] = [order[j], order[k]]; }
+  const out = document.createElement("div");
+  for (const [[text, tag]] of order) {
+    const b = document.createElement("button"); b.className = "btn"; b.textContent = text;
+    b.addEventListener("click", () => {
+      if (SESSION.first["4" + q.id] === undefined) SESSION.first["4" + q.id] = maskOf(tag ? [tag] : []);
+      clear(out);
+      if (tag) { out.appendChild(makeCard(cardFor(tag))); return; }
+      for (const x of box.querySelectorAll("button")) x.disabled = true;
+      const ok = makeCard({ cls: "win", title: "That's it", text: q.right });
+      const row = document.createElement("div"); row.className = "row";
+      const nb = document.createElement("button"); nb.className = "btn primary"; nb.textContent = i + 1 < qs.length ? "Next" : "Finish";
+      nb.addEventListener("click", () => startWhy(i + 1));
+      row.appendChild(nb); ok.appendChild(row); out.appendChild(ok); nb.focus();
+    });
+    box.appendChild(b);
+  }
+  card.appendChild(box); fb.appendChild(card); fb.appendChild(out);
+}
+function finishAll() {
+  S.stage = "done"; S.sub = "done"; S.spot = null; render();
+  const fb = $("feedback"); clear(fb);
+  const d = makeCard({ cls: "win", title: "Replication fork complete",
+    text: "You built a fork, a replication bubble, a moving fork and the enzymes that finish the lagging strand. The question about the last primer is the start of the end-replication problem, which telomerase solves." });
+  if (CFG.mode === "check") {
+    const p = document.createElement("p"); p.textContent = "Copy this code into the quiz answer box:"; d.appendChild(p);
+    const c = document.createElement("div"); c.className = "code"; c.id = "resultCode"; c.textContent = resultCode(); d.appendChild(c);
+    const b = document.createElement("button"); b.className = "btn"; b.textContent = "Copy code";
+    b.addEventListener("click", () => {
+      const fallback = () => { const r = document.createRange(); r.selectNodeContents(c); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Selected: press Ctrl+C or ⌘C"; };
+      try { navigator.clipboard.writeText(c.textContent).then(() => { b.textContent = "Copied"; }, fallback); } catch (e) { fallback(); }
+    });
+    const row = document.createElement("div"); row.className = "row"; row.appendChild(b); d.appendChild(row);
+  }
+  fb.appendChild(d);
+}
+
+/* ---------------- result code ----------------
+   R<layout>-<step1>-<names>-<step2>-<step3>-<enzymes>-<why>-<flips><flags>-<check>
+   Each step field is the base-36 bitmask (BITS) of the FIRST submission. */
+function resultCode() {
+  const m = (k) => (SESSION.first[k] || 0);
+  const or = (...ks) => ks.reduce((a, k) => a | m(k), 0);
+  const b36 = (v, w) => v.toString(36).toUpperCase().padStart(w, "0");
+  const layout = (S.t === 1 ? 0 : 1) + (S.f === 1 ? 0 : 2);
+  const enz = or("4:helicase", "4:primase", "4:pol3", "4:pol1", "4:ligase");
+  const why = or("4q1", "4q2");
+  const body = ["R" + layout, b36(m("1"), 4), b36(or("1a", "1b"), 4), b36(m("2"), 4), b36(m("3"), 4), b36(enz, 4), b36(why, 4),
+    b36(Math.min(35, SESSION.flips), 1) + b36(SESSION.flags, 1)].join("-");
+  let h = 7; for (const ch of body + "bisc202") h = (h * 31 + ch.charCodeAt(0)) % 1296;
+  return body + "-" + b36(h, 2);
+}
+
+/* ---------------- controls ---------------- */
+function start(keepLayout) {
+  S = newState(keepLayout);
+  S.cam = camFor(S.f);
+  clear($("feedback"));
+  render(); applyCam();
+}
+$("btnFlip").addEventListener("click", () => S.sel && flip(S.sel));
+$("btnDel").addEventListener("click", () => S.sel && removePiece(S.sel));
+$("btnReset").addEventListener("click", () => start(true));
+$("btnNew").addEventListener("click", () => { if (!SESSION.layoutLocked) start(false); });
+$("btnHint").addEventListener("click", () => { S.hint = !S.hint; SESSION.flags |= 1; render(); });
+$("btnCheck").addEventListener("click", runCheck);
+$("btnModel").addEventListener("click", () => {
+  S.pieces = S.pieces.filter((p) => p.locked);
+  for (const p of modelForStage()) if (canPlace(p.lane, p.start, p.len)) addPiece(p);
+  SESSION.flags |= 2; S.flagged = null; render();
+  showCards([{ cls: "info", title: "A model answer for this step", text: "Compare it with yours. Each primer sits at the 5" + P + " end of the DNA it starts, and every arrow points 5" + P + "→3" + P + ", antiparallel to its template. Press Check to go on.", learn: "" }]);
+});
+document.addEventListener("keydown", (e) => {
+  if (!S || S.sel == null || S.busy) return;
+  const a = document.activeElement;
+  if (a && a.closest && a.closest(".piece")) return;
+  if ((e.key === "f" || e.key === "F") && !(e.target.matches && e.target.matches("input,textarea,button"))) flip(S.sel);
+});
+
+/* test hook for automated checks; harmless for students */
+window.__forkBuilder = {
+  get state() { return S; }, get session() { return SESSION; }, start, addPiece: (p) => { const q = addPiece(p); render(); return q; },
+  model: modelForStage, canPlace, check: runCheck, chooseStrand, chooseEnzyme, code: resultCode, render,
+  toStage2, toStage3, toStage4, startWhy, editableRange, findings: stageFindings,
+  targets: () => (S.enz ? S.enz.targets.filter((x) => !S.enz.done.has(x.id)) : []),
+};
+start(false);
+})();
+</script>
+
+</body></html>

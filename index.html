@@ -552,7 +552,7 @@ function renderChrome() {
   $("btnHint").hidden = !building || CFG.mode === "check";
   $("btnHint").textContent = S.hint ? "Hide reading direction" : "Show reading direction";
   $("btnModel").hidden = !building || CFG.mode === "check" || S.checks < 2;
-  $("btnNew").hidden = CFG.mode === "check" && SESSION.layoutLocked;
+  $("btnNew").hidden = SESSION.layoutLocked;
   $("btnCheck").hidden = !building;
   $("btnCheck").disabled = S.busy;
   $("btnCheck").textContent = CFG.mode === "check" ? "Submit this step" : "Check";
@@ -1168,8 +1168,8 @@ function start(keepLayout) {
 }
 $("btnFlip").addEventListener("click", () => S.sel && flip(S.sel));
 $("btnDel").addEventListener("click", () => S.sel && removePiece(S.sel));
-$("btnReset").addEventListener("click", () => start(true));
-$("btnNew").addEventListener("click", () => { if (CFG.mode !== "check" || !SESSION.layoutLocked) { SESSION.layoutLocked = false; const old = S; start(false); if (S.t === old.t && S.f === old.f) { const choice = Math.floor(Math.random()*3); if (choice !== 1) S.t *= -1; if (choice !== 0) S.f *= -1; start(true); } } });
+$("btnReset").addEventListener("click", () => { SESSION.layoutLocked = false; start(true); });
+$("btnNew").addEventListener("click", () => { if (!SESSION.layoutLocked) { SESSION.layoutLocked = false; const old = S; start(false); if (S.t === old.t && S.f === old.f) { const choice = Math.floor(Math.random()*3); if (choice !== 1) S.t *= -1; if (choice !== 0) S.f *= -1; start(true); } } });
 $("btnHint").addEventListener("click", () => { S.hint = !S.hint; SESSION.flags |= 1; render(); });
 $("btnCheck").addEventListener("click", runCheck);
 $("btnModel").addEventListener("click", () => {

@@ -184,7 +184,7 @@ footer p { margin: 0; max-width: 80ch; }
   <p class="selinfo" id="selinfo" aria-live="polite"></p>
 
   <div class="traywrap" id="traywrap">
-    <svg id="tray" viewBox="0 0 1000 86" aria-label="Parts tray"></svg>
+    <svg id="tray" viewBox="0 0 1000 100" aria-label="Parts tray"></svg>
   </div>
 
   <section class="enzymes" id="enzymes" hidden>
@@ -525,7 +525,7 @@ function describePiece(p) {
   const pol = p.dir === 1 ? "5" + P + " end at left, 3" + P + " end at right" : "3" + P + " end at left, 5" + P + " end at right";
   return `${p.kind === "rna" ? "RNA primer" : "DNA"}, ${p.len} slot${p.len > 1 ? "s" : ""}, ${row}, ${pol}${p.locked ? ", fixed" : ""}`;
 }
-const TRAY = [{ kind: "dna", len: 4, x: 24 }, { kind: "dna", len: 2, x: 290 }, { kind: "dna", len: 1, x: 430 }, { kind: "rna", len: 1, x: 512 }];
+const TRAY = [{ kind: "dna", len: 7, x: 24 }, { kind: "dna", len: 2, x: 490 }, { kind: "dna", len: 1, x: 640 }, { kind: "rna", len: 1, x: 730 }];
 const TSW = 62;
 function renderTray() {
   const tray = $("tray"); clear(tray);
@@ -533,14 +533,15 @@ function renderTray() {
   $("traywrap").hidden = !show;
   if (!show) return;
   const tt = el("text", { x: 24, y: 18, class: "tray-title" }, tray); tt.textContent = "Pieces — Drag these to their correct location. Double click to flip polarity.";
-  for (const it of TRAY) {
+  for (const base of TRAY) {
+    const it = { ...base, len: base.len === 7 && S.stage === 3 ? EXT - M : base.len };
     const tg = el("g", { class: "piece d1 " + it.kind, tabindex: "0", role: "button",
       "aria-label": `Add ${it.kind === "rna" ? "an RNA primer" : "DNA, " + it.len + " slots"}. Press Enter to place it in the first free space.` }, tray);
     drawPieceShape(tg, it.kind, it.x, 56, it.len * TSW - 6, 1, 24);
     tg.addEventListener("pointerdown", (e) => startTrayDrag(e, it));
     tg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); keyboardAdd(it); } });
   }
-  const note = el("text", { x: 600, y: 52, class: "forkmark" }, tray);
+  const note = el("text", { x: 24, y: 84, class: "forkmark" }, tray);
   note.textContent = "5′ and 3′ labels show strand polarity.";
 }
 function renderChrome() {
@@ -800,6 +801,7 @@ function runCheck() {
     return;
   }
   S.flagged = null;
+  normalise(); // Correct adjacent DNA represents continuous synthesis, not separate fragments.
   lockAll();
   if (S.stage === 1) {
     S.sub = "label"; S.labelStep = 0; S.labelFirst = [];

@@ -5,6 +5,7 @@
 <style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style>
 <script>window.FORK_CONFIG = {"mode": "practice", "layout": "random", "ends": "given"};</script>
 </head><body>
+<!-- Designed by Tegan Williams for BISC 202 at SFU. Please retain this attribution in copies. -->
 <title>Replication Fork Builder</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
@@ -197,6 +198,7 @@ footer p { margin: 0; max-width: 80ch; }
   <footer>
     <p>Blocks represent stretches of DNA or RNA, not single nucleotides.</p>
     <p>Keyboard: Tab to a piece, arrow keys move it, F flips, Delete removes.</p>
+    <p class="attribution">Designed by Tegan Williams for BISC 202 at SFU</p>
   </footer>
 </div>
 
@@ -804,6 +806,7 @@ function runCheck() {
   normalise(); // Correct adjacent DNA represents continuous synthesis, not separate fragments.
   lockAll();
   if (S.stage === 1) {
+    SESSION.layoutLocked = true;
     S.sub = "label"; S.labelStep = 0; S.labelFirst = [];
     render();
     success("That fork works", "Both new strands run antiparallel to their templates and grow 5" + P + "→3" + P + " from RNA primers: one continuously toward the fork, the other in fragments away from it. Next, name the strands: click the leading strand on the diagram.");
@@ -1171,7 +1174,7 @@ function start(keepLayout) {
 $("btnFlip").addEventListener("click", () => S.sel && flip(S.sel));
 $("btnDel").addEventListener("click", () => S.sel && removePiece(S.sel));
 $("btnReset").addEventListener("click", () => { SESSION.layoutLocked = false; start(true); });
-$("btnNew").addEventListener("click", () => { if (!SESSION.layoutLocked) { SESSION.layoutLocked = false; const old = S; start(false); if (S.t === old.t && S.f === old.f) { const choice = Math.floor(Math.random()*3); if (choice !== 1) S.t *= -1; if (choice !== 0) S.f *= -1; start(true); } } });
+$("btnNew").addEventListener("click", () => { if (!SESSION.layoutLocked) { if (S.pieces.length && !window.confirm("Randomizing will clear all pieces from your fork. Continue?")) return; SESSION.layoutLocked = false; const old = S; start(false); if (S.t === old.t && S.f === old.f) { const choice = Math.floor(Math.random()*3); if (choice !== 1) S.t *= -1; if (choice !== 0) S.f *= -1; start(true); } } });
 $("btnHint").addEventListener("click", () => { S.hint = !S.hint; SESSION.flags |= 1; render(); });
 $("btnCheck").addEventListener("click", runCheck);
 $("btnModel").addEventListener("click", () => {

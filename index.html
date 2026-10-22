@@ -527,7 +527,7 @@ function describePiece(p) {
   const pol = p.dir === 1 ? "5" + P + " end at left, 3" + P + " end at right" : "3" + P + " end at left, 5" + P + " end at right";
   return `${p.kind === "rna" ? "RNA primer" : "DNA"}, ${p.len} slot${p.len > 1 ? "s" : ""}, ${row}, ${pol}${p.locked ? ", fixed" : ""}`;
 }
-const TRAY = [{ kind: "dna", len: 7, x: 24 }, { kind: "dna", len: 2, x: 490 }, { kind: "dna", len: 1, x: 640 }, { kind: "rna", len: 1, x: 730 }];
+const TRAY = [{ kind: "dna", len: 7, x: 24 }, { kind: "dna", len: 1, x: 490 }, { kind: "rna", len: 1, x: 580 }];
 const TSW = 62;
 function renderTray() {
   const tray = $("tray"); clear(tray);

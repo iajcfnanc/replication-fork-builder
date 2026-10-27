@@ -99,6 +99,10 @@ footer p { margin: 0; max-width: 80ch; }
 /* SVG parts, coloured from the same tokens */
 .tmpl { stroke: var(--tmpl); stroke-width: 4; stroke-linecap: round; fill: none; }
 .endlab { font-family: var(--font-mono); font-size: 17px; fill: var(--tmpl); }
+.strand-question { border:2px solid var(--focus); border-left-width:6px; border-radius:10px; padding:14px 18px; margin:14px 0; background:color-mix(in srgb, var(--focus) 10%, var(--bg)); }
+.strand-question h2 { font-size:1.15rem; margin:0 0 6px; }
+.strand-question p { margin:0; font-weight:400; }
+.strand-question strong { font-weight:800; text-decoration:underline; text-underline-offset:3px; }
 .lanebg { fill: color-mix(in srgb, var(--slot) 92%, white); }
 .forkmark { font-family: var(--font-body); font-size: 13px; fill: var(--muted); }
 .originmark { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
@@ -161,9 +165,16 @@ footer p { margin: 0; max-width: 80ch; }
     <button class="btn" id="btnNew" title="Restart with a different fork direction and/or template polarity">Randomize direction &amp; polarity</button>
     <button class="btn" id="btnReset">Start again</button>
     <button class="btn primary" id="btnCheck">Check</button>
+    <button class="btn" id="btnPause" hidden>Pause animation</button>
+    <button class="btn" id="btnReplay" hidden>Replay transition</button>
   </div>
 
   <div class="material-key" aria-label="Materials"><span><i class="swatch parent"></i>Parental DNA</span><span><i class="swatch"></i>New DNA</span><span><i class="swatch rna"></i>RNA primer</span></div>
+
+  <section id="strandQuestion" class="strand-question" aria-live="polite" tabindex="-1" hidden>
+    <h2 id="strandQuestionTitle"></h2>
+    <p id="strandQuestionText"></p>
+  </section>
 
   <div class="board">
     <svg id="stage" viewBox="0 0 1000 300" role="application" aria-label="Replication workspace. Tab to a piece, use the arrow keys to move it, F to flip it, Delete to remove it.">
@@ -179,6 +190,7 @@ footer p { margin: 0; max-width: 80ch; }
       <g id="gHits"></g>
       <g id="gTargets"></g>
       <g id="gDrag"></g>
+      <g id="gCue" pointer-events="none"></g>
     </svg>
   </div>
 
@@ -276,7 +288,7 @@ const BITS = ["MC151", "MC33", "MC32", "MC150", "MC158", "MC159", "MC165", "MC15
 /* ---------------- world geometry ---------------- */
 const SW = 56;                        // slot width
 const XO = 700;                       // the origin
-const M = 8, EXT = 11;                // slots per side, and after the fork moves on
+const M = 6, EXT = 8;                // slots per side, and after the fork moves on
 const Y = { top: 60, laneT: 98, dupT: 160, dupB: 184, laneB: 246, bot: 284 };
 const LANE_H = 24;
 const LANES = [{ id: "T", template: "top", y: Y.laneT }, { id: "B", template: "bottom", y: Y.laneB }];
@@ -309,16 +321,45 @@ const sideRange = (side) => (side === 1 ? [0, S.fork["1"]] : [S.fork["-1"], 0]);
 const isLeading = (lane, side) => needDir(lane) === side;
 
 /* ---------------- animation ---------------- */
+let animationEpoch = 0, animationPaused = false, lastTransition = null, replayRestore = null;
 function tween(ms, step, done) {
+  const epoch = animationEpoch;
   if (REDUCED || ms <= 0) { step(1); if (done) done(); return; }
-  const t0 = performance.now();
+  let last = performance.now(), elapsed = 0;
   const frame = (now) => {
-    const k = Math.min(1, (now - t0) / ms);
+    if (epoch !== animationEpoch) return;
+    if (!animationPaused) elapsed += now - last;
+    last = now;
+    const k = Math.min(1, elapsed / ms);
     const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
     step(e);
     if (k < 1) requestAnimationFrame(frame); else if (done) done();
   };
   requestAnimationFrame(frame);
+}
+function captureTransition(kind) {
+  if (!replayRestore) lastTransition = { kind, state: structuredClone(S) };
+  animationPaused = false;
+  $("btnPause").textContent = "Pause animation";
+  $("btnPause").hidden = REDUCED;
+  $("btnReplay").hidden = true;
+  $("stage").scrollIntoView({block:"center", behavior:"auto"});
+}
+function transitionCue(x, done, origin = false) {
+  const g = $("gCue"); clear(g);
+  el("rect", {x:x-40,y:Y.top-16,width:80,height:Y.bot-Y.top+32,rx:12,fill:"var(--focus)","fill-opacity":0.08,stroke:"var(--focus)","stroke-width":3},g);
+  if (origin) {
+    const label = el("text", {x:x+S.f*52,y:Y.top-25,"text-anchor":S.f===1?"start":"end",fill:"var(--focus)","font-size":15,"font-weight":700},g);
+    label.textContent = "Origin — revealing the second fork";
+  }
+  tween(850, () => {}, () => { clear(g); done(); });
+}
+function finishTransition() {
+  if (replayRestore) { S = replayRestore; replayRestore = null; }
+  S.busy = false; animationPaused = false;
+  clear($("gCue")); render(); applyCam();
+  $("btnPause").hidden = true;
+  $("btnReplay").hidden = false;
 }
 const lerp = (a, b, k) => a + (b - a) * k;
 
@@ -357,7 +398,7 @@ function modelLane(lane, lo, hi, f) {
     return out;
   }
   const sizes = []; let left = hi - lo;
-  while (left > 0) { const k = Math.min(3, left); sizes.push(k); left -= k; }
+  while (left > 0) { const k = Math.min(2, left); sizes.push(k); left -= k; }
   if (sizes.length > 1 && sizes[sizes.length - 1] < 2) sizes[sizes.length - 2] += sizes.pop();
   let edge = f === 1 ? hi : lo;
   for (const k of sizes) {
@@ -527,7 +568,7 @@ function describePiece(p) {
   const pol = p.dir === 1 ? "5" + P + " end at left, 3" + P + " end at right" : "3" + P + " end at left, 5" + P + " end at right";
   return `${p.kind === "rna" ? "RNA primer" : "DNA"}, ${p.len} slot${p.len > 1 ? "s" : ""}, ${row}, ${pol}${p.locked ? ", fixed" : ""}`;
 }
-const TRAY = [{ kind: "dna", len: 7, x: 24 }, { kind: "dna", len: 1, x: 490 }, { kind: "rna", len: 1, x: 580 }];
+const TRAY = [{ kind: "dna", len: M - 1 }, { kind: "dna", len: 1 }, { kind: "rna", len: 1 }];
 const TSW = 62;
 function renderTray() {
   const tray = $("tray"); clear(tray);
@@ -535,8 +576,10 @@ function renderTray() {
   $("traywrap").hidden = !show;
   if (!show) return;
   const tt = el("text", { x: 24, y: 18, class: "tray-title" }, tray); tt.textContent = "Pieces — Drag these to their correct location. Double click to flip polarity.";
+  let trayX = 24;
   for (const base of TRAY) {
-    const it = { ...base, len: base.len === 7 && S.stage === 3 ? EXT - M : base.len };
+    const it = { ...base, x: trayX, len: base.len === M - 1 && S.stage === 3 ? EXT - M : base.len };
+    trayX += it.len * TSW + 24;
     const tg = el("g", { class: "piece d1 " + it.kind, tabindex: "0", role: "button",
       "aria-label": `Add ${it.kind === "rna" ? "an RNA primer" : "DNA, " + it.len + " slots"}. Press Enter to place it in the first free space.` }, tray);
     drawPieceShape(tg, it.kind, it.x, 56, it.len * TSW - 6, 1, 24);
@@ -547,6 +590,19 @@ function renderTray() {
   note.textContent = "5′ and 3′ labels show strand polarity.";
 }
 function renderChrome() {
+  const naming = S.stage === 1 && S.sub === "label";
+  $("strandQuestion").hidden = !naming;
+  $("brief").hidden = naming;
+  if (naming) {
+    $("strandQuestionTitle").textContent = S.labelStep === 0 ? "Leading strand" : "Lagging-strand template";
+    const question = $("strandQuestionText"); clear(question);
+    if (S.labelStep === 0) question.textContent = "Which new strand is the leading strand? Click it on the diagram.";
+    else {
+      question.appendChild(document.createTextNode("Which "));
+      const emphasis = document.createElement("strong"); emphasis.textContent = "parental"; question.appendChild(emphasis);
+      question.appendChild(document.createTextNode(" strand is the lagging-strand template? Click it on the diagram."));
+    }
+  }
   const sel = S.pieces.find((p) => p.id === S.sel && !p.locked);
   const building = (S.stage === 1 || S.stage === 2 || S.stage === 3) && S.sub === "build";
   $("btnFlip").hidden = $("btnDel").hidden = !building;
@@ -784,7 +840,7 @@ function success(title, text, cont, label = "Continue") {
     setTimeout(() => b.focus(), 50);
   }
   fb.appendChild(d);
-  try { d.scrollIntoView({ block: "nearest", behavior: REDUCED ? "auto" : "smooth" }); } catch (e) {}
+  try { const target = S.stage === 1 && S.sub === "label" ? $("strandQuestion") : d; target.scrollIntoView({ block: "nearest", behavior: REDUCED ? "auto" : "smooth" }); } catch (e) {}
 }
 
 /* ---------------- checking each building step ---------------- */
@@ -809,21 +865,21 @@ function runCheck() {
     SESSION.layoutLocked = true;
     S.sub = "label"; S.labelStep = 0; S.labelFirst = [];
     render();
-    success("That fork works", "Both new strands run antiparallel to their templates and grow 5" + P + "→3" + P + " from RNA primers: one continuously toward the fork, the other in fragments away from it. Next, name the strands: click the leading strand on the diagram.");
+    success("That fork works", "Both new strands run antiparallel to their templates and grow 5" + P + "→3" + P + " from RNA primers: one continuously toward the fork, the other in fragments away from it.");
     return;
   }
   if (S.stage === 2) {
     render();
     success("Your replication bubble is complete",
       "Each template is copied continuously at one fork and in Okazaki fragments at the other, because the two forks move apart. Each leading strand starts from its own primer near the origin. Next, we follow one fork as it keeps moving.",
-      toStage3);
+      toStage3, "Watch the fork advance");
     return;
   }
   if (S.stage === 3) {
     render();
     success("Right: the fork moved and both strands kept up",
       "The leading strand simply grew on from its 3" + P + " end, with no new primer. The lagging side needed a new primer at the fork and a new Okazaki fragment growing back toward the last one. Next: the enzymes that do all this.",
-      toStage4);
+      toStage4, "Explore the fork enzymes");
   }
 }
 function lockAll() { for (const p of S.pieces) p.locked = true; S.sel = null; }
@@ -869,36 +925,39 @@ function chooseStrand(t) {
   S.hitMark = { id: t.id, cls: "right" };
   if (S.labelStep === 0) {
     S.labelStep = 1; render();
-    success("Yes, that is the leading strand", "It is the NEW strand made continuously, growing 5" + P + "→3" + P + " toward the fork. Now click the lagging-strand template: the parental strand that the lagging strand is copied from.");
+    success("Yes, that is the leading strand", "It is the NEW strand made continuously, growing 5" + P + "→3" + P + " toward the fork.");
     return;
   }
   S.sub = "done"; SESSION.layoutLocked = true; S.hitMark = null; render();
   success("Fork complete, and the strands named correctly",
     "The lagging-strand template is the parental strand whose new partner has to be made in fragments. Next, we zoom out to the whole replication bubble. Your pieces stay where you put them.",
-    toStage2);
+    toStage2, "Reveal the second fork");
 }
 
 /* ---------------- transitions ---------------- */
 function toStage2() {
+  captureTransition(2);
   S.busy = true; S.stage = 2; S.sub = "build"; S.checks = 0; S.hint = false;
-  clear($("feedback")); render();
-  moveCam(camFor("bubble"), 1300, () => {
-    tween(700, (k) => { S.shown[S.side2] = k; renderTemplates(); renderLanes(); }, () => { S.busy = false; render(); });
-  });
+  if (!replayRestore) clear($("feedback")); render();
+  transitionCue(sx(0), () => moveCam(camFor("bubble"), 1700, () => {
+    tween(1400, (k) => { S.shown[S.side2] = k; renderTemplates(); renderLanes(); }, finishTransition);
+  }), true);
 }
 function toStage3() {
+  captureTransition(3);
   S.busy = true; S.stage = 3; S.sub = "build"; S.checks = 0; S.hint = false;
-  clear($("feedback")); render();
+  if (!replayRestore) clear($("feedback")); render();
   const side = S.side2, key = String(side);
   // zoom to the second fork, sized for where it is going, then move it on
   const target = (() => { const keep = S.fork[key]; S.fork[key] = side * EXT; const c = camFor(side); S.fork[key] = keep; return c; })();
-  moveCam(target, 1300, () => {
+  transitionCue(sx(S.fork[key]), () => moveCam(target, 1700, () => {
     const from = S.fork[key];
-    tween(1600, (k) => { S.fork[key] = lerp(from, side * EXT, k); renderTemplates(); renderLanes(); },
-      () => { S.fork[key] = side * EXT; S.busy = false; render(); announce("The fork has moved three slots. New template is exposed next to the fork."); });
-  });
+    tween(2200, (k) => { S.fork[key] = lerp(from, side * EXT, k); renderTemplates(); renderLanes(); },
+      () => { S.fork[key] = side * EXT; transitionCue(sx(side * (M + EXT) / 2), finishTransition); announce("The fork has moved two slots. New template is exposed next to the fork."); });
+  }));
 }
 function toStage4() {
+  lastTransition = null; $("btnReplay").hidden = true;
   S.busy = true; S.stage = 4; S.sub = "enzymes";
   clear($("feedback"));
   normalise();
@@ -1166,11 +1225,24 @@ function resultCode() {
 
 /* ---------------- controls ---------------- */
 function start(keepLayout) {
+  animationEpoch++; animationPaused = false; lastTransition = null; replayRestore = null;
+  clear($("gCue")); $("btnPause").hidden = true; $("btnReplay").hidden = true;
   S = newState(keepLayout);
   S.cam = camFor(S.f);
   clear($("feedback"));
   render(); applyCam();
 }
+$("btnPause").addEventListener("click", () => {
+  animationPaused = !animationPaused;
+  $("btnPause").textContent = animationPaused ? "Resume animation" : "Pause animation";
+});
+$("btnReplay").addEventListener("click", () => {
+  if (!lastTransition || S.busy) return;
+  replayRestore = S;
+  S = structuredClone(lastTransition.state);
+  render(); applyCam(); // Restore the starting view before highlighting its origin or fork.
+  (lastTransition.kind === 2 ? toStage2 : toStage3)();
+});
 $("btnFlip").addEventListener("click", () => S.sel && flip(S.sel));
 $("btnDel").addEventListener("click", () => S.sel && removePiece(S.sel));
 $("btnReset").addEventListener("click", () => { SESSION.layoutLocked = false; start(true); });

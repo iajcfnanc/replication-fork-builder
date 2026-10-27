@@ -100,8 +100,10 @@ footer p { margin: 0; max-width: 80ch; }
 .tmpl { stroke: var(--tmpl); stroke-width: 4; stroke-linecap: round; fill: none; }
 .endlab { font-family: var(--font-mono); font-size: 17px; fill: var(--tmpl); }
 .strand-question { border:2px solid var(--focus); border-left-width:6px; border-radius:10px; padding:14px 18px; margin:14px 0; background:color-mix(in srgb, var(--focus) 10%, var(--bg)); }
-.strand-question h2 { font-size:1.15rem; margin:0 0 6px; }
+.strand-question h2 { font-size:1.45rem; font-weight:800; margin:0 0 6px; }
 .strand-question p { margin:0; font-weight:400; }
+.question-status { display:block; width:fit-content; padding:5px 10px; margin:0 0 10px; border-radius:5px; background:var(--focus); color:white; font-size:.85rem; font-weight:800; }
+.card.ask, .enzymes { border:2px solid var(--focus); border-left-width:6px; background:color-mix(in srgb, var(--focus) 10%, var(--bg)); }
 .strand-question strong { font-weight:800; text-decoration:underline; text-underline-offset:3px; }
 .lanebg { fill: color-mix(in srgb, var(--slot) 92%, white); }
 .forkmark { font-family: var(--font-body); font-size: 13px; fill: var(--muted); }
@@ -172,6 +174,7 @@ footer p { margin: 0; max-width: 80ch; }
   <div class="material-key" aria-label="Materials"><span><i class="swatch parent"></i>Parental DNA</span><span><i class="swatch"></i>New DNA</span><span><i class="swatch rna"></i>RNA primer</span></div>
 
   <section id="strandQuestion" class="strand-question" aria-live="polite" tabindex="-1" hidden>
+    <span class="question-status" id="strandQuestionStatus"></span>
     <h2 id="strandQuestionTitle"></h2>
     <p id="strandQuestionText"></p>
   </section>
@@ -201,6 +204,7 @@ footer p { margin: 0; max-width: 80ch; }
   </div>
 
   <section class="enzymes" id="enzymes" hidden>
+    <span class="question-status">Answer to continue · Choose an enzyme</span>
     <p id="enzPrompt">Choose a purple marker on the diagram, then choose the enzyme that acts there.</p>
     <div class="row" id="enzRow"></div>
   </section>
@@ -595,13 +599,13 @@ function renderChrome() {
   $("brief").hidden = naming;
   if (naming) {
     $("strandQuestionTitle").textContent = S.labelStep === 0 ? "Leading strand" : "Lagging-strand template";
+    $("strandQuestionStatus").textContent = `Answer to continue · Question ${S.labelStep + 1} of 2`;
     const question = $("strandQuestionText"); clear(question);
-    if (S.labelStep === 0) question.textContent = "Which new strand is the leading strand? Click it on the diagram.";
-    else {
-      question.appendChild(document.createTextNode("Which "));
-      const emphasis = document.createElement("strong"); emphasis.textContent = "parental"; question.appendChild(emphasis);
-      question.appendChild(document.createTextNode(" strand is the lagging-strand template? Click it on the diagram."));
-    }
+    question.appendChild(document.createTextNode("Click the "));
+    const emphasis = document.createElement("strong");
+    emphasis.textContent = S.labelStep === 0 ? "leading strand" : "parental lagging-strand template";
+    question.appendChild(emphasis);
+    question.appendChild(document.createTextNode(" on the diagram below ↓"));
   }
   const sel = S.pieces.find((p) => p.id === S.sel && !p.locked);
   const building = (S.stage === 1 || S.stage === 2 || S.stage === 3) && S.sub === "build";
@@ -1168,6 +1172,9 @@ function startWhy(i) {
   S.sub = "why"; S.spot = q.spot; render();
   const fb = $("feedback"); clear(fb);
   const card = makeCard({ cls: "ask", title: q.title, text: q.ask });
+  const status = document.createElement("span"); status.className = "question-status";
+  status.textContent = `Answer to continue · Question ${i + 1} of ${qs.length}`;
+  card.prepend(status);
   const box = document.createElement("div"); box.className = "choices";
   const order = q.choices.map((c, k) => [c, k]);
   for (let k = order.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [order[k], order[j]] = [order[j], order[k]]; }
@@ -1178,6 +1185,7 @@ function startWhy(i) {
       if (SESSION.first["4" + q.id] === undefined) SESSION.first["4" + q.id] = maskOf(tag ? [tag] : []);
       clear(out);
       if (tag) { out.appendChild(makeCard(cardFor(tag))); return; }
+      status.textContent = "Answered ✓ · Continue below";
       for (const x of box.querySelectorAll("button")) x.disabled = true;
       const ok = makeCard({ cls: "win", title: "That's it", text: q.right });
       const row = document.createElement("div"); row.className = "row";

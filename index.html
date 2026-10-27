@@ -89,6 +89,10 @@ svg#tray { display: block; width: 100%; min-width: 560px; height: auto; touch-ac
 .card p { margin: 0; max-width: 75ch; }
 .card .learn { font-size: 0.8rem; color: var(--muted); }
 .card .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.card.win .btn.primary { min-height:52px; padding:13px 24px; font-size:1.1rem; font-weight:800; background:var(--focus); border:2px solid var(--focus); color:#fff; box-shadow:0 3px 0 color-mix(in srgb, var(--focus) 65%, black); }
+.card.win .btn.primary::after { content:" →"; margin-left:12px; font-size:1.3em; }
+.card.win .row { margin-top:12px; }
+.card.win .btn.primary:hover { filter:brightness(1.15); }
 .card .choices { display: grid; gap: 6px; }
 .card .choices .btn { text-align: left; }
 .code { font-family: var(--font-mono); font-size: 1.05rem; letter-spacing: 0.06em; padding: 6px 10px; border: 1px dashed var(--accent); border-radius: 6px; user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }
@@ -456,14 +460,14 @@ function piecePath(x, y, w, dir, h = LANE_H) {
   const r = h / 2;
   return `M${x},${y-r} H${x+w} V${y+r} H${x} Z`;
 }
-function drawPieceShape(g, kind, x, y, w, dir, h = LANE_H) {
+function drawPieceShape(g, kind, x, y, w, dir, h = LANE_H, joinedLeft = false, joinedRight = false) {
   el("path", { d: piecePath(x, y, w, dir, h) }, g);
   if (kind === "rna") for (let hx=x+6; hx<x+w-5; hx+=9) el("line", {x1:hx,y1:y-h/2+1,x2:hx-5,y2:y-h/2+8,class:"hatch"},g);
   const cx = dir === 1 ? x+w-7 : x+7;
-  el("circle", {cx, cy:y, r:2, class:"chevron"},g);
+  if (!(dir === 1 ? joinedRight : joinedLeft)) el("circle", {cx, cy:y, r:2, class:"chevron"},g);
   if (w >= 38) { const t = el("text", { x: x + w / 2, y: y + 4, "text-anchor": "middle", class: "inside" }, g); t.textContent = kind === "rna" ? "RNA" : "DNA"; }
-  const a = el("text", { x: x + 2, y: y - h / 2 - 3, class: "pol" }, g); a.textContent = dir === 1 ? "5" + P : "3" + P;
-  const b = el("text", { x: x + w - 2, y: y - h / 2 - 3, "text-anchor": "end", class: "pol" }, g); b.textContent = dir === 1 ? "3" + P : "5" + P;
+  if (!joinedLeft) { const a = el("text", { x: x + 2, y: y - h / 2 - 3, class: "pol" }, g); a.textContent = dir === 1 ? "5" + P : "3" + P; }
+  if (!joinedRight) { const b = el("text", { x: x + w - 2, y: y - h / 2 - 3, "text-anchor": "end", class: "pol" }, g); b.textContent = dir === 1 ? "3" + P : "5" + P; }
 }
 
 /* ---------------- render ---------------- */
@@ -554,7 +558,12 @@ function renderPieces() {
     if (S.flagged && S.flagged.has(p.id)) cls.push("flag");
     const pg = el("g", { class: cls.join(" "), tabindex: p.locked ? "-1" : "0", role: "button", "aria-label": describePiece(p), style: op < 1 ? `opacity:${op}` : null }, g);
     pg.dataset.id = p.id;
-    drawPieceShape(pg, p.kind, x, lane.y, w, p.dir);
+    // Show continuous leading DNA immediately, while keeping the new piece editable.
+    const neighbours = S.stage === 3 && p.kind === "dna" && isLeading(lane, side) && p.dir === needDir(lane)
+      ? S.pieces.filter(q => q.id !== p.id && q.kind === "dna" && q.lane === p.lane && q.dir === p.dir) : [];
+    const left = neighbours.some(q => q.start + q.len === p.start);
+    const right = neighbours.some(q => p.start + p.len === q.start);
+    drawPieceShape(pg, p.kind, x - (left ? 4 : 0), lane.y, w + (left ? 4 : 0) + (right ? 4 : 0), p.dir, LANE_H, left, right);
     if (!p.locked) {
       pg.addEventListener("pointerdown", (e) => startPieceDrag(e, p.id));
       pg.addEventListener("keydown", (e) => pieceKey(e, p.id));
